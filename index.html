@@ -5,988 +5,1023 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Investment OS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <!-- Firebase Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #04070f; font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+    body { background: #04070f; font-family: 'IBM Plex Mono', monospace; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #080e1a; }
     ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
     input, textarea, select, button { font-family: inherit; }
     select option { background: #080e1a; color: #e2e8f0; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .fade-in { animation: fadeIn 0.25s ease forwards; }
+    .spin { animation: spin 1s linear infinite; display:inline-block; }
+    .pulsing { animation: pulse 2s ease infinite; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
 
-    // ── THEME ──────────────────────────────────────────────────
-    const T = {
-      bg: "#04070f",
-      surface: "#080e1a",
-      card: "#0c1424",
-      border: "#112240",
-      borderBright: "#1e3a5f",
-      green: "#00ff88",
-      greenDim: "#00ff8840",
-      blue: "#4fc3f7",
-      blueDim: "#4fc3f720",
-      amber: "#ffb347",
-      amberDim: "#ffb34720",
-      red: "#ff4757",
-      redDim: "#ff475720",
-      purple: "#c084fc",
-      purpleDim: "#c084fc20",
-      text: "#e2e8f0",
-      muted: "#64748b",
-      faint: "#1e2d40",
-    };
+// ── THEME ──────────────────────────────────────────────────
+const T = {
+  bg:"#04070f", surface:"#080e1a", card:"#0c1424",
+  border:"#112240", borderBright:"#1e3a5f",
+  green:"#00ff88", greenDim:"#00ff8840",
+  blue:"#4fc3f7", blueDim:"#4fc3f720",
+  amber:"#ffb347", amberDim:"#ffb34720",
+  red:"#ff4757", redDim:"#ff475720",
+  purple:"#c084fc", purpleDim:"#c084fc20",
+  cyan:"#22d3ee", cyanDim:"#22d3ee20",
+  text:"#e2e8f0", muted:"#64748b", faint:"#1e2d40",
+};
+const font = "'IBM Plex Mono', monospace";
 
-    const font = "'IBM Plex Mono', 'Courier New', monospace";
+// ── INITIAL DATA ───────────────────────────────────────────
+const INIT = {
+  portfolio: [
+    { ticker:"QQQ",  weight:50, fairValue:650,  buyZone:500, thesis:"Tech/AI infrastructure basket — companies building the backbone of the AI era", stopLoss:450, type:"etf" },
+    { ticker:"VXUS", weight:15, fairValue:68,   buyZone:52,  thesis:"Global diversification — emerging + developed markets in digitalization era", stopLoss:44, type:"etf" },
+    { ticker:"AMZN", weight:10, fairValue:360,  buyZone:277, thesis:"$200B capex conviction bet on AI infrastructure. $244B backlog already locked.", stopLoss:170, type:"stock" },
+    { ticker:"INTU", weight:10, fairValue:694,  buyZone:534, thesis:"Fast AI adopter, 56% below fair value. Market overreacted to AI disruption fears.", stopLoss:360, type:"stock" },
+    { ticker:"TSM",  weight:10, fairValue:439,  buyZone:338, thesis:"Monopoly on advanced chip manufacturing. 2nm fully booked. AI can't exist without TSM.", stopLoss:240, type:"stock" },
+    { ticker:"CASH", weight:5,  fairValue:null, buyZone:null,thesis:"Dip reserve: QQQ -7% → $800, QQQ -12% → $800, QQQ -20% → $400", stopLoss:null, type:"cash" },
+  ],
+  journal: [],
+  watchlist: [
+    { ticker:"LLY",  fairValue:1713, buyZone:1318, currentPrice:1082, upside:58,  notes:"GLP-1 king. Q2 oral pill catalyst.", status:"BUY",  id:1 },
+    { ticker:"GEV",  fairValue:819,  buyZone:630,  currentPrice:811,  upside:1,   notes:"AI needs power. $150B backlog. Wait for $630.", status:"WAIT", id:2 },
+    { ticker:"NVDA", fairValue:270,  buyZone:208,  currentPrice:189,  upside:43,  notes:"AI chip king on sale. 37/39 analyst buys.", status:"BUY",  id:3 },
+    { ticker:"LULU", fairValue:350,  buyZone:192,  currentPrice:170,  upside:106, notes:"14x P/E for premium brand. New CEO catalyst needed.", status:"WATCH",id:4 },
+  ],
+  thesis: `My macro thesis is that technology is not a sector — it is infrastructure that will integrate into every industry. The companies that win are not just pure tech companies, but sector leaders who adopt technology the fastest.
 
-    // ── INITIAL PORTFOLIO ──────────────────────────────────────
-    const INITIAL_PORTFOLIO = [
-      { ticker: "QQQ",  weight: 50,  fairValue: 650,  buyZone: 500, thesis: "Tech/AI infrastructure basket — companies building the backbone of the AI era", stopLoss: 450, type: "etf" },
-      { ticker: "VXUS", weight: 15,  fairValue: 68,   buyZone: 52,  thesis: "Global diversification — emerging + developed markets in digitalization era", stopLoss: 44, type: "etf" },
-      { ticker: "AMZN", weight: 10,  fairValue: 360,  buyZone: 277, thesis: "$200B capex conviction bet on AI infrastructure. $244B backlog already locked. 43% below fair value.", stopLoss: 170, type: "stock" },
-      { ticker: "INTU", weight: 10,  fairValue: 694,  buyZone: 534, thesis: "Fast AI adopter, 56% below fair value. Market overreacted to AI disruption fears. QuickBooks moat intact.", stopLoss: 360, type: "stock" },
-      { ticker: "TSM",  weight: 10,  fairValue: 439,  buyZone: 338, thesis: "Monopoly on advanced chip manufacturing. 2nm fully booked by NVDA + AAPL. AI can't exist without TSM.", stopLoss: 240, type: "stock" },
-      { ticker: "CASH", weight: 5,   fairValue: null, buyZone: null, thesis: "Dip reserve: QQQ -7% → $800, QQQ -12% → $800, QQQ -20% → $400", stopLoss: null, type: "cash" },
-    ];
-
-    const INITIAL_WATCHLIST = [
-      { ticker: "LLY",  fairValue: 1713, buyZone: 1318, currentPrice: 1082, upside: 58,  notes: "GLP-1 king. Q2 oral pill catalyst. Beat earnings massively.", status: "BUY" },
-      { ticker: "GEV",  fairValue: 819,  buyZone: 630,  currentPrice: 811,  upside: 1,   notes: "AI needs power. $150B backlog. Wait for pullback to $630.", status: "WAIT" },
-      { ticker: "NVDA", fairValue: 270,  buyZone: 208,  currentPrice: 189,  upside: 43,  notes: "AI chip king on sale. 37/39 analyst buys.", status: "BUY" },
-      { ticker: "NFLX", fairValue: 114,  buyZone: 88,   currentPrice: 81,   upside: 41,  notes: "Warner deal noise, not fundamentals. Watch for deal collapse.", status: "WATCH" },
-      { ticker: "LULU", fairValue: 350,  buyZone: 192,  currentPrice: 170,  upside: 106, notes: "14x P/E for premium brand. New CEO catalyst needed.", status: "WATCH" },
-    ];
-
-    const INITIAL_THESIS = `My macro thesis is that technology is not a sector — it is infrastructure that will integrate into every industry. The companies that win are not just pure tech companies, but sector leaders who adopt technology the fastest.
-
-QQQ (50%): These are the companies building the tools, platforms, and infrastructure that all other industries will run on. Stable compounding core.
+QQQ (50%): Building the tools, platforms, and infrastructure that all other industries will run on. Stable compounding core.
 
 Emerging Markets (15%): Developing economies are in the digitalization phase that developed markets went through 20-30 years ago. Growth curves are exponential at this stage.
 
-Individual Stocks (30%): Companies that are either building critical AI infrastructure (TSM), adopting AI faster than peers while undervalued (INTU), or making massive conviction bets on the AI era (AMZN $200B capex).
+Individual Stocks (30%): Companies either building critical AI infrastructure (TSM), adopting AI faster than peers while undervalued (INTU), or making massive conviction bets on the AI era (AMZN $200B capex).
 
 What would break this thesis:
 - AI proves to be a bubble with no real enterprise ROI
 - Geopolitical shock disrupts semiconductor supply chains
-- Regulatory crackdown on big tech disrupts the ecosystem`;
+- Regulatory crackdown on big tech disrupts the ecosystem`,
+  checks: {},
+};
 
-    // ── STORAGE (localStorage) ─────────────────────────────────
-    const storage = {
-      get: (key) => {
-        try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
-      },
-      set: (key, val) => {
-        try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+// ── LOCAL STORAGE ──────────────────────────────────────────
+const ls = {
+  get: (k, def) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):def; } catch { return def; } },
+  set: (k, v)   => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// ── FIREBASE SINGLETON ─────────────────────────────────────
+let fbDb = null;
+let fbUnsubscribe = null;
+
+function initFirebase(config) {
+  try {
+    if (firebase.apps.length) {
+      firebase.apps.forEach(app => app.delete());
+    }
+    firebase.initializeApp(config);
+    fbDb = firebase.firestore();
+    return true;
+  } catch(e) { console.error("Firebase init error:", e); return false; }
+}
+
+// ── HELPERS ────────────────────────────────────────────────
+const fmt = (n) => n==null ? "—" : `$${Number(n).toLocaleString()}`;
+const today = () => new Date().toISOString().split("T")[0];
+const genKey = () => Math.random().toString(36).slice(2,8).toUpperCase() + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
+
+function Badge({ color, children, small }) {
+  return <span style={{ background:color+"22", color, border:`1px solid ${color}44`, padding:small?"1px 6px":"2px 8px", borderRadius:"3px", fontSize:small?"10px":"11px", fontWeight:"700", letterSpacing:"1px" }}>{children}</span>;
+}
+
+function Section({ title, accent, children }) {
+  return (
+    <div style={{ marginBottom:"28px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"16px", paddingBottom:"10px", borderBottom:`1px solid ${T.border}` }}>
+        <div style={{ width:"3px", height:"16px", background:accent||T.green, borderRadius:"2px" }} />
+        <span style={{ fontSize:"11px", color:accent||T.green, letterSpacing:"3px", textTransform:"uppercase" }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Inp({ value, onChange, placeholder, type="text", style={} }) {
+  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+    style={{ background:T.surface, border:`1px solid ${T.border}`, color:T.text, padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, outline:"none", width:"100%", boxSizing:"border-box", ...style }} />;
+}
+
+function Textarea({ value, onChange, placeholder, rows=3 }) {
+  return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
+    style={{ background:T.surface, border:`1px solid ${T.border}`, color:T.text, padding:"10px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical" }} />;
+}
+
+function Btn({ onClick, children, color, small, outline, disabled }) {
+  const c = color||T.green;
+  return <button onClick={onClick} disabled={disabled} style={{ background:outline?"transparent":c+"22", border:`1px solid ${c}${disabled?"33":"66"}`, color:disabled?T.muted:c, padding:small?"5px 12px":"8px 16px", borderRadius:"6px", cursor:disabled?"not-allowed":"pointer", fontSize:small?"11px":"12px", fontFamily:font, fontWeight:"600", letterSpacing:"0.5px", opacity:disabled?0.5:1 }}>{children}</button>;
+}
+
+// ── TABS ───────────────────────────────────────────────────
+const TABS = [
+  { id:"portfolio", label:"Portfolio", icon:"◈" },
+  { id:"journal",   label:"Journal",   icon:"◎" },
+  { id:"valuation", label:"Valuation", icon:"◆" },
+  { id:"watchlist", label:"Watchlist", icon:"◉" },
+  { id:"research",  label:"Research",  icon:"◐" },
+  { id:"thesis",    label:"Thesis",    icon:"◑" },
+  { id:"sync",      label:"Sync",      icon:"⟳" },
+];
+
+// ══════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════
+export default function App() {
+  const [tab, setTab] = useState("portfolio");
+
+  // Data state
+  const [portfolio, setPortfolio] = useState(INIT.portfolio);
+  const [journal,   setJournal]   = useState(INIT.journal);
+  const [watchlist, setWatchlist] = useState(INIT.watchlist);
+  const [thesis,    setThesis]    = useState(INIT.thesis);
+  const [checks,    setChecks]    = useState(INIT.checks);
+
+  // Sync state
+  const [syncConfig,  setSyncConfig]  = useState(null); // { firebaseConfig, syncKey }
+  const [syncStatus,  setSyncStatus]  = useState("offline"); // offline | connecting | synced | syncing | error
+  const [syncMsg,     setSyncMsg]     = useState("");
+  const [loaded,      setLoaded]      = useState(false);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    setPortfolio(ls.get("inv_portfolio", INIT.portfolio));
+    setJournal(  ls.get("inv_journal",   INIT.journal));
+    setWatchlist(ls.get("inv_watchlist", INIT.watchlist));
+    setThesis(   ls.get("inv_thesis",    INIT.thesis));
+    setChecks(   ls.get("inv_checks",    INIT.checks));
+    const cfg = ls.get("inv_syncConfig", null);
+    if (cfg) {
+      setSyncConfig(cfg);
+    }
+    setLoaded(true);
+  }, []);
+
+  // Connect to Firebase when syncConfig is available
+  useEffect(() => {
+    if (!loaded || !syncConfig) return;
+    connectFirebase(syncConfig);
+    return () => { if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; } };
+  }, [loaded, syncConfig]);
+
+  function connectFirebase(cfg) {
+    setSyncStatus("connecting");
+    setSyncMsg("Connecting to cloud...");
+    try {
+      const ok = initFirebase(cfg.firebaseConfig);
+      if (!ok) { setSyncStatus("error"); setSyncMsg("Firebase init failed. Check your config."); return; }
+
+      const docRef = fbDb.collection("investmentOS").doc(cfg.syncKey);
+
+      // Subscribe to realtime updates
+      if (fbUnsubscribe) fbUnsubscribe();
+      fbUnsubscribe = docRef.onSnapshot(
+        (snap) => {
+          if (snap.exists) {
+            const data = snap.data();
+            if (data.portfolio) { setPortfolio(data.portfolio); ls.set("inv_portfolio", data.portfolio); }
+            if (data.journal)   { setJournal(data.journal);     ls.set("inv_journal",   data.journal); }
+            if (data.watchlist) { setWatchlist(data.watchlist); ls.set("inv_watchlist", data.watchlist); }
+            if (data.thesis)    { setThesis(data.thesis);       ls.set("inv_thesis",    data.thesis); }
+            if (data.checks)    { setChecks(data.checks);       ls.set("inv_checks",    data.checks); }
+          }
+          setSyncStatus("synced");
+          setSyncMsg("All devices synced");
+        },
+        (err) => {
+          setSyncStatus("error");
+          setSyncMsg("Sync error: " + err.message);
+        }
+      );
+    } catch(e) {
+      setSyncStatus("error");
+      setSyncMsg("Connection failed: " + e.message);
+    }
+  }
+
+  // Save to both localStorage and Firestore
+  const save = useCallback((key, val) => {
+    ls.set("inv_" + key, val);
+    if (fbDb && syncConfig) {
+      setSyncStatus("syncing");
+      fbDb.collection("investmentOS").doc(syncConfig.syncKey)
+        .set({ [key]: val }, { merge: true })
+        .then(() => { setSyncStatus("synced"); setSyncMsg("All devices synced"); })
+        .catch((e) => { setSyncStatus("error"); setSyncMsg("Save failed: " + e.message); });
+    }
+  }, [syncConfig]);
+
+  const upPortfolio = (v) => { setPortfolio(v); save("portfolio", v); };
+  const upJournal   = (v) => { setJournal(v);   save("journal",   v); };
+  const upWatchlist = (v) => { setWatchlist(v); save("watchlist", v); };
+  const upThesis    = (v) => { setThesis(v);    save("thesis",    v); };
+  const upChecks    = (v) => { setChecks(v);    save("checks",    v); };
+
+  const activateSyncConfig = (cfg) => {
+    ls.set("inv_syncConfig", cfg);
+    setSyncConfig(cfg);
+    connectFirebase(cfg);
+  };
+
+  const disconnectSync = () => {
+    if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; }
+    ls.set("inv_syncConfig", null);
+    setSyncConfig(null);
+    setSyncStatus("offline");
+    setSyncMsg("");
+    fbDb = null;
+    if (firebase.apps.length) firebase.apps.forEach(a => a.delete());
+  };
+
+  if (!loaded) return (
+    <div style={{ background:T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:font, color:T.green }}>
+      Loading investment system...
+    </div>
+  );
+
+  const statusColor = { offline:T.muted, connecting:T.amber, syncing:T.amber, synced:T.green, error:T.red }[syncStatus];
+  const statusIcon  = { offline:"○", connecting:"◌", syncing:"◌", synced:"●", error:"✕" }[syncStatus];
+
+  return (
+    <div style={{ background:T.bg, minHeight:"100vh", fontFamily:font, color:T.text }}>
+
+      {/* Header */}
+      <div style={{ borderBottom:`1px solid ${T.border}`, padding:"14px 24px", display:"flex", justifyContent:"space-between", alignItems:"center", background:T.surface }}>
+        <div>
+          <div style={{ fontSize:"11px", color:T.green, letterSpacing:"4px", textTransform:"uppercase" }}>◈ Investment OS</div>
+          <div style={{ fontSize:"12px", color:T.muted, marginTop:"2px" }}>Personal trading system · $40,000</div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:"16px" }}>
+          {/* Sync status pill */}
+          <div
+            onClick={() => setTab("sync")}
+            style={{ display:"flex", alignItems:"center", gap:"6px", background:statusColor+"15", border:`1px solid ${statusColor}33`, borderRadius:"20px", padding:"4px 12px", cursor:"pointer" }}>
+            <span style={{ color:statusColor, fontSize:"9px" }} className={syncStatus==="syncing"||syncStatus==="connecting" ? "pulsing" : ""}>{statusIcon}</span>
+            <span style={{ fontSize:"10px", color:statusColor, letterSpacing:"1px", textTransform:"uppercase" }}>
+              {syncStatus === "offline" ? "Local only" : syncStatus === "synced" ? "Cloud synced" : syncStatus === "connecting" ? "Connecting" : syncStatus === "syncing" ? "Saving..." : "Sync error"}
+            </span>
+          </div>
+          <div style={{ fontSize:"11px", color:T.muted }}>{today()}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:"2px", padding:"12px 24px", background:T.surface, borderBottom:`1px solid ${T.border}`, overflowX:"auto" }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding:"7px 16px", borderRadius:"5px", border:"none", cursor:"pointer",
+            background: tab===t.id ? (t.id==="sync"?T.cyan:T.green)+"22" : "transparent",
+            color: tab===t.id ? (t.id==="sync"?T.cyan:T.green) : T.muted,
+            fontSize:"12px", fontFamily:font, fontWeight:tab===t.id?"700":"400",
+            borderBottom: tab===t.id ? `2px solid ${t.id==="sync"?T.cyan:T.green}` : "2px solid transparent",
+            whiteSpace:"nowrap", transition:"all 0.15s",
+          }}>
+            {t.icon} {t.label}
+            {t.id==="sync" && syncStatus==="error" && <span style={{ marginLeft:"4px", color:T.red }}>!</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{ padding:"24px", maxWidth:"1000px", margin:"0 auto" }}>
+        <div className="fade-in" key={tab}>
+          {tab==="portfolio" && <PortfolioTab portfolio={portfolio} update={upPortfolio} />}
+          {tab==="journal"   && <JournalTab   journal={journal}     update={upJournal}   />}
+          {tab==="valuation" && <ValuationTab />}
+          {tab==="watchlist" && <WatchlistTab watchlist={watchlist} update={upWatchlist} />}
+          {tab==="research"  && <ResearchTab  checks={checks}       update={upChecks}    />}
+          {tab==="thesis"    && <ThesisTab    thesis={thesis}       update={upThesis}    />}
+          {tab==="sync"      && <SyncTab syncConfig={syncConfig} syncStatus={syncStatus} syncMsg={syncMsg} onConnect={activateSyncConfig} onDisconnect={disconnectSync} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// SYNC TAB — Setup Wizard
+// ══════════════════════════════════════════════════════════
+function SyncTab({ syncConfig, syncStatus, syncMsg, onConnect, onDisconnect }) {
+  const [step, setStep] = useState(syncConfig ? "connected" : 1);
+  const [configText, setConfigText] = useState("");
+  const [syncKey, setSyncKey] = useState(genKey());
+  const [parseError, setParseError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  const parseConfig = () => {
+    try {
+      // Try to extract config object from pasted text
+      let text = configText.trim();
+      // Handle if they pasted the full firebaseConfig = { ... } block
+      const match = text.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})/);
+      if (match) text = match[1];
+      // Handle if they pasted just the object
+      const parsed = JSON.parse(text);
+      if (!parsed.apiKey || !parsed.projectId) {
+        setParseError("Missing apiKey or projectId. Make sure you copied the full config object.");
+        return null;
       }
-    };
-
-    // ── HELPERS ────────────────────────────────────────────────
-    const fmt = (n) => n == null ? "—" : `$${Number(n).toLocaleString()}`;
-    const today = () => new Date().toISOString().split("T")[0];
-
-    function Badge({ color, children, small }) {
-      return (
-        <span style={{
-          background: color + "22", color, border: `1px solid ${color}44`,
-          padding: small ? "1px 6px" : "2px 8px",
-          borderRadius: "3px", fontSize: small ? "10px" : "11px",
-          fontWeight: "700", letterSpacing: "1px", fontFamily: font,
-        }}>{children}</span>
-      );
+      setParseError("");
+      return parsed;
+    } catch {
+      // Try eval-based parse for non-JSON objects (Firebase config uses no quotes on keys)
+      try {
+        // Extract just the object literal
+        const objMatch = configText.match(/\{[\s\S]*\}/);
+        if (objMatch) {
+          // Convert to valid JSON
+          const jsonStr = objMatch[0]
+            .replace(/\/\/.*/g, '')
+            .replace(/,\s*\}/g, '}')
+            .replace(/(\w+):/g, '"$1":')
+            .replace(/:\s*"([^"]*)"/g, ': "$1"');
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.apiKey && parsed.projectId) { setParseError(""); return parsed; }
+        }
+      } catch {}
+      setParseError("Couldn't parse the config. Try copying just the object { } part.");
+      return null;
     }
+  };
 
-    function Section({ title, accent, children }) {
-      return (
-        <div style={{ marginBottom: "28px" }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: "10px",
-            marginBottom: "16px", paddingBottom: "10px",
-            borderBottom: `1px solid ${T.border}`,
-          }}>
-            <div style={{ width: "3px", height: "16px", background: accent || T.green, borderRadius: "2px" }} />
-            <span style={{ fontSize: "11px", color: accent || T.green, letterSpacing: "3px", textTransform: "uppercase" }}>{title}</span>
-          </div>
-          {children}
-        </div>
-      );
-    }
+  const handleConnect = async () => {
+    const cfg = parseConfig();
+    if (!cfg) return;
+    if (!syncKey.trim()) { setParseError("Please enter a sync key."); return; }
+    setConnecting(true);
+    setParseError("");
+    await new Promise(r => setTimeout(r, 500));
+    onConnect({ firebaseConfig: cfg, syncKey: syncKey.trim().toUpperCase() });
+    setConnecting(false);
+    setStep("connected");
+  };
 
-    function Input({ value, onChange, placeholder, type = "text", style = {} }) {
-      return (
-        <input
-          type={type} value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          style={{
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.text, padding: "8px 12px", borderRadius: "6px",
-            fontSize: "12px", fontFamily: font, outline: "none",
-            width: "100%", boxSizing: "border-box", ...style,
-          }}
-        />
-      );
-    }
+  const statusColor = { offline:T.muted, connecting:T.amber, syncing:T.amber, synced:T.green, error:T.red }[syncStatus];
 
-    function Textarea({ value, onChange, placeholder, rows = 3 }) {
-      return (
-        <textarea
-          value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder} rows={rows}
-          style={{
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.text, padding: "10px 12px", borderRadius: "6px",
-            fontSize: "12px", fontFamily: font, outline: "none",
-            width: "100%", boxSizing: "border-box", resize: "vertical",
-          }}
-        />
-      );
-    }
-
-    function Btn({ onClick, children, color, small, outline }) {
-      const c = color || T.green;
-      return (
-        <button onClick={onClick} style={{
-          background: outline ? "transparent" : c + "22",
-          border: `1px solid ${c}66`, color: c,
-          padding: small ? "5px 12px" : "8px 16px",
-          borderRadius: "6px", cursor: "pointer",
-          fontSize: small ? "11px" : "12px", fontFamily: font,
-          fontWeight: "600", letterSpacing: "0.5px",
-          transition: "all 0.15s",
-        }}>{children}</button>
-      );
-    }
-
-    // ── TABS ───────────────────────────────────────────────────
-    const TABS = [
-      { id: "portfolio", label: "Portfolio", icon: "◈" },
-      { id: "journal",   label: "Journal",   icon: "◎" },
-      { id: "valuation", label: "Valuation", icon: "◆" },
-      { id: "watchlist", label: "Watchlist", icon: "◉" },
-      { id: "research",  label: "Research",  icon: "◐" },
-      { id: "thesis",    label: "Thesis",    icon: "◑" },
-    ];
-
-    // ══════════════════════════════════════════════════════════
-    function App() {
-      const [tab, setTab] = useState("portfolio");
-      const [portfolio, setPortfolio] = useState(INITIAL_PORTFOLIO);
-      const [journal, setJournal] = useState([]);
-      const [watchlist, setWatchlist] = useState(INITIAL_WATCHLIST);
-      const [thesis, setThesis] = useState(INITIAL_THESIS);
-      const [checks, setChecks] = useState({});
-      const [loaded, setLoaded] = useState(false);
-
-      useEffect(() => {
-        const keys = ["portfolio", "journal", "watchlist", "thesis", "checks"];
-        const setters = [setPortfolio, setJournal, setWatchlist, setThesis, setChecks];
-        const defaults = [INITIAL_PORTFOLIO, [], INITIAL_WATCHLIST, INITIAL_THESIS, {}];
-        keys.forEach((k, i) => {
-          const v = storage.get("inv_" + k);
-          if (v !== null) setters[i](v);
-          else setters[i](defaults[i]);
-        });
-        setLoaded(true);
-      }, []);
-
-      const updatePortfolio = (val) => { setPortfolio(val); storage.set("inv_portfolio", val); };
-      const updateJournal   = (val) => { setJournal(val);   storage.set("inv_journal", val); };
-      const updateWatchlist = (val) => { setWatchlist(val); storage.set("inv_watchlist", val); };
-      const updateThesis    = (val) => { setThesis(val);    storage.set("inv_thesis", val); };
-      const updateChecks    = (val) => { setChecks(val);    storage.set("inv_checks", val); };
-
-      if (!loaded) return (
-        <div style={{ background: T.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: font, color: T.green }}>
-          Loading your investment system...
-        </div>
-      );
-
-      return (
-        <div style={{ background: T.bg, minHeight: "100vh", fontFamily: font, color: T.text }}>
-          {/* Header */}
-          <div style={{
-            borderBottom: `1px solid ${T.border}`,
-            padding: "16px 24px",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            background: T.surface,
-          }}>
-            <div>
-              <div style={{ fontSize: "11px", color: T.green, letterSpacing: "4px", textTransform: "uppercase" }}>
-                ◈ Investment OS
-              </div>
-              <div style={{ fontSize: "13px", color: T.muted, marginTop: "2px" }}>
-                Your personal trading system · $40,000
-              </div>
+  if (step === "connected") {
+    return (
+      <div>
+        <Section title="Cloud Sync Status" accent={T.cyan}>
+          <div style={{ background:statusColor+"15", border:`1px solid ${statusColor}33`, borderRadius:"12px", padding:"24px", marginBottom:"20px", textAlign:"center" }}>
+            <div style={{ fontSize:"32px", color:statusColor, marginBottom:"8px", fontWeight:"700" }}>
+              {syncStatus==="synced" ? "✓" : syncStatus==="error" ? "✕" : "◌"}
             </div>
-            <div style={{ fontSize: "11px", color: T.muted }}>{today()}</div>
+            <div style={{ fontSize:"15px", color:statusColor, fontWeight:"700", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"2px" }}>
+              {syncStatus==="synced" ? "All Devices Synced" : syncStatus==="error" ? "Sync Error" : "Connecting..."}
+            </div>
+            {syncMsg && <div style={{ fontSize:"12px", color:T.muted, marginTop:"6px" }}>{syncMsg}</div>}
           </div>
 
-          {/* Tab Nav */}
-          <div style={{
-            display: "flex", gap: "2px", padding: "12px 24px",
-            background: T.surface, borderBottom: `1px solid ${T.border}`,
-            overflowX: "auto",
-          }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                padding: "7px 16px", borderRadius: "5px",
-                border: "none", cursor: "pointer",
-                background: tab === t.id ? T.green + "22" : "transparent",
-                color: tab === t.id ? T.green : T.muted,
-                fontSize: "12px", fontFamily: font, fontWeight: tab === t.id ? "700" : "400",
-                borderBottom: tab === t.id ? `2px solid ${T.green}` : "2px solid transparent",
-                whiteSpace: "nowrap", transition: "all 0.15s",
-              }}>
-                {t.icon} {t.label}
-              </button>
+          <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"16px" }}>
+            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px", letterSpacing:"2px" }}>YOUR SYNC KEY</div>
+            <div style={{ fontSize:"20px", color:T.cyan, fontWeight:"700", letterSpacing:"4px" }}>{syncConfig?.syncKey}</div>
+            <div style={{ fontSize:"11px", color:T.muted, marginTop:"6px" }}>Enter this key on any device to access your data. Keep it secret.</div>
+          </div>
+
+          <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"20px" }}>
+            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>HOW TO ACCESS FROM ANOTHER DEVICE</div>
+            <div style={{ fontSize:"12px", color:T.text, lineHeight:"1.8" }}>
+              <div style={{ marginBottom:"4px" }}>1. Download the <code style={{color:T.green}}>investment-os.html</code> file to the other device</div>
+              <div style={{ marginBottom:"4px" }}>2. Open it in a browser</div>
+              <div style={{ marginBottom:"4px" }}>3. Go to the <span style={{color:T.cyan}}>⟳ Sync</span> tab</div>
+              <div style={{ marginBottom:"4px" }}>4. Click "Already have a key?" and enter: <span style={{color:T.cyan, fontWeight:"700"}}>{syncConfig?.syncKey}</span></div>
+              <div>5. Your data loads automatically ✓</div>
+            </div>
+          </div>
+
+          <Btn onClick={onDisconnect} color={T.red} outline>Disconnect Sync</Btn>
+        </Section>
+      </div>
+    );
+  }
+
+  // STEP INDICATOR
+  const steps = ["Create Firebase Project", "Copy Config", "Set Sync Key", "Connect"];
+
+  return (
+    <div>
+      {/* Already have a key */}
+      <div style={{ background:T.card, border:`1px solid ${T.cyan}33`, borderRadius:"8px", padding:"16px", marginBottom:"24px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ fontSize:"12px", color:T.cyan, marginBottom:"4px", fontWeight:"700" }}>Already have a sync key?</div>
+            <div style={{ fontSize:"11px", color:T.muted }}>Skip setup and connect to existing data</div>
+          </div>
+          <Btn onClick={() => setStep("existing")} color={T.cyan} outline small>Connect with key →</Btn>
+        </div>
+      </div>
+
+      {/* Step existing key */}
+      {step === "existing" && (
+        <Section title="Connect to Existing Data" accent={T.cyan}>
+          <div style={{ marginBottom:"12px" }}>
+            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px" }}>FIREBASE CONFIG (paste it again)</div>
+            <Textarea value={configText} onChange={setConfigText} placeholder={`Paste your Firebase config here:\n{\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "...",\n  ...\n}`} rows={8} />
+          </div>
+          <div style={{ marginBottom:"16px" }}>
+            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px" }}>YOUR SYNC KEY</div>
+            <Inp value={syncKey} onChange={v => setSyncKey(v.toUpperCase())} placeholder="e.g. ABCD12-EF3456" />
+          </div>
+          {parseError && <div style={{ fontSize:"11px", color:T.red, marginBottom:"12px" }}>{parseError}</div>}
+          <div style={{ display:"flex", gap:"8px" }}>
+            <Btn onClick={handleConnect} color={T.cyan} disabled={connecting}>{connecting ? "Connecting..." : "Connect →"}</Btn>
+            <Btn onClick={() => setStep(1)} color={T.muted} outline small>Back</Btn>
+          </div>
+        </Section>
+      )}
+
+      {step !== "existing" && (
+        <>
+          {/* Step progress */}
+          <div style={{ display:"flex", gap:"8px", marginBottom:"28px" }}>
+            {steps.map((s, i) => (
+              <div key={i} style={{ flex:1, textAlign:"center" }}>
+                <div style={{ height:"3px", background: step>i+1 ? T.cyan : step===i+1 ? T.cyan : T.faint, borderRadius:"2px", marginBottom:"6px", transition:"background 0.3s" }} />
+                <div style={{ fontSize:"9px", color: step===i+1 ? T.cyan : step>i+1 ? T.green : T.muted, letterSpacing:"1px" }}>
+                  {step>i+1 ? "✓ " : ""}{s.toUpperCase()}
+                </div>
+              </div>
             ))}
           </div>
 
-          {/* Content */}
-          <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
-            {tab === "portfolio" && <PortfolioTab portfolio={portfolio} updatePortfolio={updatePortfolio} />}
-            {tab === "journal"   && <JournalTab journal={journal} updateJournal={updateJournal} portfolio={portfolio} />}
-            {tab === "valuation" && <ValuationTab />}
-            {tab === "watchlist" && <WatchlistTab watchlist={watchlist} updateWatchlist={updateWatchlist} />}
-            {tab === "research"  && <ResearchTab checks={checks} updateChecks={updateChecks} />}
-            {tab === "thesis"    && <ThesisTab thesis={thesis} updateThesis={updateThesis} />}
-          </div>
-        </div>
-      );
-    }
+          {/* STEP 1 */}
+          {step===1 && (
+            <Section title="Step 1 — Create a Free Firebase Project" accent={T.cyan}>
+              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"20px", lineHeight:"1.8" }}>
+                Firebase is Google's free cloud database. Your data is stored there. Setup takes about 5 minutes.
+              </div>
 
-    // ══════════════════════════════════════════════════════════
-    // TAB 1: PORTFOLIO
-    // ══════════════════════════════════════════════════════════
-    function PortfolioTab({ portfolio, updatePortfolio }) {
-      const [editing, setEditing] = useState(null);
-      const [newTicker, setNewTicker] = useState("");
-      const [newWeight, setNewWeight] = useState("");
-      const totalWeight = portfolio.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0);
-
-      const remove = (i) => updatePortfolio(portfolio.filter((_, idx) => idx !== i));
-      const add = () => {
-        if (!newTicker || !newWeight) return;
-        updatePortfolio([...portfolio, {
-          ticker: newTicker.toUpperCase(), weight: parseFloat(newWeight),
-          fairValue: null, buyZone: null, thesis: "", stopLoss: null, type: "stock"
-        }]);
-        setNewTicker(""); setNewWeight("");
-      };
-      const update = (i, field, val) => {
-        const p = [...portfolio];
-        p[i] = { ...p[i], [field]: val };
-        updatePortfolio(p);
-      };
-
-      const weightColor = (w) => {
-        const pct = w / 100;
-        if (pct > 0.4) return T.amber;
-        if (pct > 0.2) return T.blue;
-        return T.green;
-      };
-
-      return (
-        <div>
-          <Section title="Current Allocation" accent={T.green}>
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ display: "flex", height: "8px", borderRadius: "4px", overflow: "hidden", marginBottom: "8px" }}>
-                {portfolio.filter(p => p.ticker !== "CASH").map((p, i) => {
-                  const colors = [T.green, T.blue, T.amber, T.purple, T.red, T.green];
-                  return (
-                    <div key={i} style={{
-                      width: `${p.weight}%`, background: colors[i % colors.length],
-                      opacity: 0.8, transition: "width 0.3s",
-                    }} title={`${p.ticker}: ${p.weight}%`} />
-                  );
-                })}
-              </div>
-              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                {portfolio.map((p, i) => {
-                  const colors = [T.green, T.blue, T.amber, T.purple, T.red, T.green, T.blue];
-                  return (
-                    <span key={i} style={{ fontSize: "10px", color: colors[i % colors.length], letterSpacing: "1px" }}>
-                      ■ {p.ticker} {p.weight}%
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={{
-              padding: "8px 14px", borderRadius: "6px", marginBottom: "16px",
-              background: Math.abs(totalWeight - 100) < 0.5 ? T.greenDim : T.amberDim,
-              border: `1px solid ${Math.abs(totalWeight - 100) < 0.5 ? T.green : T.amber}44`,
-              fontSize: "12px", color: Math.abs(totalWeight - 100) < 0.5 ? T.green : T.amber,
-            }}>
-              Total Weight: {totalWeight.toFixed(1)}% {Math.abs(totalWeight - 100) < 0.5 ? "✓ Balanced" : "⚠ Adjust to 100%"}
-            </div>
-
-            {portfolio.map((pos, i) => (
-              <div key={i} style={{
-                background: T.card, border: `1px solid ${T.border}`,
-                borderRadius: "8px", padding: "16px", marginBottom: "8px",
-              }}>
-                {editing === i ? (
-                  <div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "8px" }}>
-                      <div>
-                        <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>WEIGHT %</div>
-                        <Input value={pos.weight} onChange={v => update(i, "weight", parseFloat(v) || 0)} type="number" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>FAIR VALUE</div>
-                        <Input value={pos.fairValue || ""} onChange={v => update(i, "fairValue", parseFloat(v) || null)} type="number" placeholder="$" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>BUY ZONE</div>
-                        <Input value={pos.buyZone || ""} onChange={v => update(i, "buyZone", parseFloat(v) || null)} type="number" placeholder="$" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>STOP LOSS</div>
-                        <Input value={pos.stopLoss || ""} onChange={v => update(i, "stopLoss", parseFloat(v) || null)} type="number" placeholder="$" />
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>THESIS</div>
-                      <Textarea value={pos.thesis} onChange={v => update(i, "thesis", v)} rows={2} placeholder="Why do you own this?" />
-                    </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <Btn onClick={() => setEditing(null)} color={T.green} small>Save</Btn>
-                      <Btn onClick={() => remove(i)} color={T.red} small outline>Remove</Btn>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "15px", fontWeight: "700", color: T.text }}>{pos.ticker}</span>
-                        <Badge color={weightColor(pos.weight)}>{pos.weight}%</Badge>
-                        <Badge color={T.muted} small>{pos.type.toUpperCase()}</Badge>
-                      </div>
-                      {pos.thesis && (
-                        <div style={{ fontSize: "11px", color: T.muted, lineHeight: "1.6", maxWidth: "600px" }}>
-                          {pos.thesis.substring(0, 120)}{pos.thesis.length > 120 ? "..." : ""}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-                        {pos.fairValue && <span style={{ fontSize: "11px", color: T.blue }}>Target: {fmt(pos.fairValue)}</span>}
-                        {pos.buyZone && <span style={{ fontSize: "11px", color: T.green }}>Buy zone: {fmt(pos.buyZone)}</span>}
-                        {pos.stopLoss && <span style={{ fontSize: "11px", color: T.red }}>Stop: {fmt(pos.stopLoss)}</span>}
-                        <span style={{ fontSize: "11px", color: T.muted }}>≈ {fmt(40000 * pos.weight / 100)}</span>
-                      </div>
-                    </div>
-                    <Btn onClick={() => setEditing(i)} color={T.blue} small outline>Edit</Btn>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            <div style={{
-              background: T.card, border: `1px dashed ${T.border}`,
-              borderRadius: "8px", padding: "16px", marginTop: "12px",
-            }}>
-              <div style={{ fontSize: "11px", color: T.muted, marginBottom: "10px", letterSpacing: "2px" }}>ADD POSITION</div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <Input value={newTicker} onChange={setNewTicker} placeholder="TICKER" style={{ width: "100px" }} />
-                <Input value={newWeight} onChange={setNewWeight} placeholder="Weight %" type="number" style={{ width: "100px" }} />
-                <Btn onClick={add} color={T.green}>Add</Btn>
-              </div>
-            </div>
-          </Section>
-        </div>
-      );
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // TAB 2: TRADING JOURNAL
-    // ══════════════════════════════════════════════════════════
-    function JournalTab({ journal, updateJournal, portfolio }) {
-      const [form, setForm] = useState({
-        date: today(), ticker: "", action: "BUY", price: "", shares: "",
-        thesis: "", whatCouldGoWrong: "", target: "", timeline: "", sentiment: "NEUTRAL"
-      });
-      const [view, setView] = useState(null);
-
-      const add = () => {
-        if (!form.ticker || !form.price) return;
-        const entry = { ...form, id: Date.now() };
-        updateJournal([entry, ...journal]);
-        setForm({ date: today(), ticker: "", action: "BUY", price: "", shares: "", thesis: "", whatCouldGoWrong: "", target: "", timeline: "", sentiment: "NEUTRAL" });
-      };
-
-      const remove = (id) => updateJournal(journal.filter(e => e.id !== id));
-      const actionColor = (a) => a === "BUY" ? T.green : a === "SELL" ? T.red : T.amber;
-      const sentimentColor = (s) => s === "BULLISH" ? T.green : s === "BEARISH" ? T.red : T.muted;
-
-      return (
-        <div>
-          <Section title="New Journal Entry" accent={T.blue}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "10px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>DATE</div>
-                <Input value={form.date} onChange={v => setForm(f => ({ ...f, date: v }))} type="date" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>TICKER</div>
-                <Input value={form.ticker} onChange={v => setForm(f => ({ ...f, ticker: v.toUpperCase() }))} placeholder="e.g. AMZN" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>ACTION</div>
-                <select value={form.action} onChange={e => setForm(f => ({ ...f, action: e.target.value }))} style={{
-                  background: T.surface, border: `1px solid ${T.border}`, color: actionColor(form.action),
-                  padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontFamily: font,
-                  width: "100%", outline: "none",
-                }}>
-                  <option value="BUY">BUY</option>
-                  <option value="SELL">SELL</option>
-                  <option value="HOLD">HOLD / NOTE</option>
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>PRICE</div>
-                <Input value={form.price} onChange={v => setForm(f => ({ ...f, price: v }))} placeholder="$" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>SHARES</div>
-                <Input value={form.shares} onChange={v => setForm(f => ({ ...f, shares: v }))} placeholder="qty" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>SENTIMENT</div>
-                <select value={form.sentiment} onChange={e => setForm(f => ({ ...f, sentiment: e.target.value }))} style={{
-                  background: T.surface, border: `1px solid ${T.border}`, color: sentimentColor(form.sentiment),
-                  padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontFamily: font,
-                  width: "100%", outline: "none",
-                }}>
-                  <option value="BULLISH">BULLISH</option>
-                  <option value="NEUTRAL">NEUTRAL</option>
-                  <option value="BEARISH">BEARISH</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginBottom: "10px" }}>
-              <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>WHY AM I DOING THIS? (THESIS)</div>
-              <Textarea value={form.thesis} onChange={v => setForm(f => ({ ...f, thesis: v }))} placeholder="Be specific. What's the thesis? What data supports this decision?" rows={3} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>WHAT COULD MAKE ME WRONG?</div>
-                <Textarea value={form.whatCouldGoWrong} onChange={v => setForm(f => ({ ...f, whatCouldGoWrong: v }))} placeholder="Risks, bear case, what would break the thesis?" rows={2} />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>TARGET PRICE & TIMELINE</div>
-                <Input value={form.target} onChange={v => setForm(f => ({ ...f, target: v }))} placeholder="e.g. $360 in 12-18 months" style={{ marginBottom: "8px" }} />
-                <Input value={form.timeline} onChange={v => setForm(f => ({ ...f, timeline: v }))} placeholder="Timeline / exit condition" />
-              </div>
-            </div>
-            <Btn onClick={add} color={T.blue}>Log Entry →</Btn>
-          </Section>
-
-          <Section title={`Journal Log (${journal.length} entries)`} accent={T.purple}>
-            {journal.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px", color: T.muted, fontSize: "12px" }}>
-                No entries yet. Log your first trade above.
-              </div>
-            ) : journal.map((e, i) => (
-              <div key={e.id} style={{
-                background: T.card, border: `1px solid ${T.border}`,
-                borderLeft: `3px solid ${actionColor(e.action)}`,
-                borderRadius: "8px", padding: "14px", marginBottom: "8px",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-                     onClick={() => setView(view === i ? null : i)}>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <Badge color={actionColor(e.action)} small>{e.action}</Badge>
-                    <span style={{ fontSize: "14px", fontWeight: "700", color: T.text }}>{e.ticker}</span>
-                    {e.price && <span style={{ fontSize: "12px", color: T.muted }}>@ {fmt(e.price)}</span>}
-                    {e.shares && <span style={{ fontSize: "12px", color: T.muted }}>× {e.shares} shares</span>}
-                  </div>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <Badge color={sentimentColor(e.sentiment)} small>{e.sentiment}</Badge>
-                    <span style={{ fontSize: "11px", color: T.muted }}>{e.date}</span>
-                    <Btn onClick={(ev) => { ev.stopPropagation(); remove(e.id); }} color={T.red} small outline>×</Btn>
-                    <span style={{ fontSize: "11px", color: T.muted }}>{view === i ? "▲" : "▼"}</span>
+              {[
+                { n:1, text:"Go to", link:"https://console.firebase.google.com", linkText:"console.firebase.google.com", extra:" and sign in with your Google account" },
+                { n:2, text:"Click", code:"Add project", extra:" → give it any name (e.g. 'my-investments') → Continue" },
+                { n:3, text:"Disable Google Analytics if asked (not needed) →", code:"Create project" },
+                { n:4, text:"Click the", code:"</> Web", extra:" icon to add a web app → give it any nickname → click Register app" },
+                { n:5, text:"You'll see a config object — leave this page open for Step 2" },
+                { n:6, text:"In the left sidebar: Build →", code:"Firestore Database", extra:" → Create database → Start in test mode → choose any region → Enable" },
+              ].map((s,i) => (
+                <div key={i} style={{ display:"flex", gap:"14px", padding:"12px 0", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ width:"22px", height:"22px", minWidth:"22px", background:T.cyan+"22", border:`1px solid ${T.cyan}44`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", color:T.cyan, fontWeight:"700" }}>{s.n}</div>
+                  <div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>
+                    {s.text}{" "}
+                    {s.link && <a href={s.link} target="_blank" style={{ color:T.cyan }}>{s.linkText}</a>}
+                    {s.code && <code style={{ background:T.surface, border:`1px solid ${T.border}`, padding:"1px 6px", borderRadius:"3px", color:T.green, fontSize:"11px" }}>{s.code}</code>}
+                    {s.extra}
                   </div>
                 </div>
-                {view === i && (
-                  <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: `1px solid ${T.border}` }}>
-                    {e.thesis && (
-                      <div style={{ marginBottom: "10px" }}>
-                        <div style={{ fontSize: "10px", color: T.green, letterSpacing: "2px", marginBottom: "4px" }}>THESIS</div>
-                        <div style={{ fontSize: "12px", color: T.text, lineHeight: "1.7" }}>{e.thesis}</div>
-                      </div>
-                    )}
-                    {e.whatCouldGoWrong && (
-                      <div style={{ marginBottom: "10px" }}>
-                        <div style={{ fontSize: "10px", color: T.red, letterSpacing: "2px", marginBottom: "4px" }}>RISKS / WHAT COULD GO WRONG</div>
-                        <div style={{ fontSize: "12px", color: T.text, lineHeight: "1.7" }}>{e.whatCouldGoWrong}</div>
-                      </div>
-                    )}
-                    {(e.target || e.timeline) && (
-                      <div>
-                        <div style={{ fontSize: "10px", color: T.blue, letterSpacing: "2px", marginBottom: "4px" }}>TARGET & TIMELINE</div>
-                        <div style={{ fontSize: "12px", color: T.text }}>{e.target} — {e.timeline}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </Section>
-        </div>
-      );
-    }
+              ))}
 
-    // ══════════════════════════════════════════════════════════
-    // TAB 3: VALUATION CALCULATOR
-    // ══════════════════════════════════════════════════════════
-    function ValuationTab() {
-      const [ticker, setTicker] = useState("");
-      const [eps, setEps] = useState("");
-      const [peLow, setPeLow] = useState("");
-      const [peMid, setPeMid] = useState("");
-      const [peHigh, setPeHigh] = useState("");
-      const [current, setCurrent] = useState("");
-      const [notes, setNotes] = useState("");
-      const [results, setResults] = useState(null);
-
-      const calc = () => {
-        const e = parseFloat(eps), lo = parseFloat(peLow), mid = parseFloat(peMid), hi = parseFloat(peHigh), cur = parseFloat(current);
-        if (!e || !lo || !mid || !hi) return;
-        const cons = e * lo, base = e * mid, bull = e * hi;
-        const buyZone = (base / 1.3).toFixed(0);
-        const upside = cur ? (((base - cur) / cur) * 100).toFixed(1) : null;
-        const verdict = cur
-          ? cur < buyZone ? "STRONG BUY — Below buy zone"
-          : cur < base ? "BUY — Below fair value"
-          : cur < bull ? "FAIR — At or near fair value"
-          : "EXPENSIVE — Above fair value"
-          : "Enter current price for verdict";
-        const verdictColor = cur
-          ? cur < buyZone ? T.green : cur < base ? T.green : cur < bull ? T.amber : T.red
-          : T.muted;
-        setResults({ cons, base, bull, buyZone, upside, verdict, verdictColor, cur, e, mid });
-        setNotes(notes || `Buy ${ticker} at ${fmt(buyZone)} or below. Target ${fmt(base.toFixed(0))} in 12-18 months. Sell if thesis breaks or stock hits ${fmt(bull.toFixed(0))}.`);
-      };
-
-      return (
-        <div>
-          <Section title="Valuation Calculator" accent={T.amber}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>TICKER</div>
-                <Input value={ticker} onChange={v => setTicker(v.toUpperCase())} placeholder="e.g. NVDA" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>CURRENT PRICE</div>
-                <Input value={current} onChange={setCurrent} placeholder="$" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>FORWARD EPS (12-month estimate)</div>
-                <Input value={eps} onChange={setEps} placeholder="e.g. 6.00" type="number" />
-              </div>
-            </div>
-            <div style={{ fontSize: "10px", color: T.muted, marginBottom: "8px", letterSpacing: "2px" }}>P/E RANGE (check historical on Yahoo Finance)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.red, marginBottom: "4px" }}>CONSERVATIVE (low P/E)</div>
-                <Input value={peLow} onChange={setPeLow} placeholder="e.g. 30" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.amber, marginBottom: "4px" }}>BASE CASE (mid P/E)</div>
-                <Input value={peMid} onChange={setPeMid} placeholder="e.g. 45" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.green, marginBottom: "4px" }}>BULL CASE (high P/E)</div>
-                <Input value={peHigh} onChange={setPeHigh} placeholder="e.g. 55" type="number" />
-              </div>
-            </div>
-            <Btn onClick={calc} color={T.amber}>Calculate →</Btn>
-          </Section>
-
-          {results && (
-            <Section title="Results" accent={results.verdictColor}>
-              <div style={{
-                background: results.verdictColor + "15",
-                border: `1px solid ${results.verdictColor}44`,
-                borderRadius: "8px", padding: "16px", marginBottom: "16px",
-                textAlign: "center",
-              }}>
-                <div style={{ fontSize: "11px", color: results.verdictColor, letterSpacing: "3px", marginBottom: "6px" }}>VERDICT</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: results.verdictColor }}>{results.verdict}</div>
-                {results.upside && (
-                  <div style={{ fontSize: "13px", color: T.muted, marginTop: "6px" }}>
-                    {results.upside > 0 ? "+" : ""}{results.upside}% to fair value
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-                {[
-                  { label: "CONSERVATIVE", value: fmt(results.cons.toFixed(0)), color: T.red },
-                  { label: "FAIR VALUE",   value: fmt(results.base.toFixed(0)), color: T.amber },
-                  { label: "BULL CASE",    value: fmt(results.bull.toFixed(0)), color: T.green },
-                  { label: "BUY ZONE",     value: fmt(results.buyZone), color: T.blue, sub: "30% margin of safety" },
-                ].map((r, i) => (
-                  <div key={i} style={{
-                    background: T.card, border: `1px solid ${r.color}33`,
-                    borderTop: `3px solid ${r.color}`,
-                    borderRadius: "8px", padding: "14px", textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: "10px", color: r.color, letterSpacing: "1px", marginBottom: "6px" }}>{r.label}</div>
-                    <div style={{ fontSize: "18px", fontWeight: "700", color: r.color }}>{r.value}</div>
-                    {r.sub && <div style={{ fontSize: "10px", color: T.muted, marginTop: "4px" }}>{r.sub}</div>}
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px", letterSpacing: "2px" }}>BUY/SELL PLAN (EDIT AND SAVE)</div>
-                <Textarea value={notes} onChange={setNotes} rows={3} />
+              <div style={{ marginTop:"20px" }}>
+                <Btn onClick={() => setStep(2)} color={T.cyan}>I created the project →</Btn>
               </div>
             </Section>
           )}
 
-          <Section title="How to Use This Calculator" accent={T.muted}>
-            <div style={{ fontSize: "12px", color: T.muted, lineHeight: "1.9" }}>
-              <div style={{ marginBottom: "8px" }}><span style={{ color: T.blue }}>Step 1:</span> Find Forward EPS on Yahoo Finance → Analysis tab → EPS Estimates (next year)</div>
-              <div style={{ marginBottom: "8px" }}><span style={{ color: T.blue }}>Step 2:</span> Find historical P/E range — look at 3 year P/E chart on Macrotrends.net</div>
-              <div style={{ marginBottom: "8px" }}><span style={{ color: T.blue }}>Step 3:</span> Enter conservative (lowest), base (average), bull (highest) P/E from history</div>
-              <div style={{ marginBottom: "8px" }}><span style={{ color: T.blue }}>Step 4:</span> Compare result to current price — if current is below buy zone, it's a strong entry</div>
-              <div><span style={{ color: T.amber }}>Rule:</span> Never buy above your base fair value without exceptional reason</div>
+          {/* STEP 2 */}
+          {step===2 && (
+            <Section title="Step 2 — Paste Your Firebase Config" accent={T.cyan}>
+              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"16px", lineHeight:"1.8" }}>
+                On the Firebase page, find the <code style={{color:T.green, background:T.surface, padding:"1px 5px", borderRadius:"3px"}}>firebaseConfig</code> object. It looks like this:
+              </div>
+              <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"14px", marginBottom:"20px", fontSize:"11px", color:T.muted, lineHeight:"1.8" }}>
+                <span style={{color:T.muted}}>const</span> <span style={{color:T.blue}}>firebaseConfig</span> = {'{'}<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>apiKey:</span> <span style={{color:T.amber}}>"AIzaSy..."</span>,<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>authDomain:</span> <span style={{color:T.amber}}>"your-app.firebaseapp.com"</span>,<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>projectId:</span> <span style={{color:T.amber}}>"your-app"</span>,<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>storageBucket:</span> <span style={{color:T.amber}}>"..."</span>,<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>messagingSenderId:</span> <span style={{color:T.amber}}>"..."</span>,<br/>
+                &nbsp;&nbsp;<span style={{color:T.text}}>appId:</span> <span style={{color:T.amber}}>"..."</span><br/>
+                {'}'}
+              </div>
+              <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px", letterSpacing:"2px" }}>PASTE YOUR CONFIG BELOW (copy the whole block including {'{ }'})</div>
+              <Textarea value={configText} onChange={setConfigText} placeholder={`Paste here:\n{\n  apiKey: "AIzaSy...",\n  authDomain: "...",\n  projectId: "...",\n  ...\n}`} rows={9} />
+              {parseError && <div style={{ fontSize:"11px", color:T.red, marginTop:"8px" }}>{parseError}</div>}
+              <div style={{ display:"flex", gap:"8px", marginTop:"16px" }}>
+                <Btn onClick={() => { const c = parseConfig(); if(c) setStep(3); }} color={T.cyan}>Verify & Continue →</Btn>
+                <Btn onClick={() => setStep(1)} color={T.muted} outline small>← Back</Btn>
+              </div>
+            </Section>
+          )}
+
+          {/* STEP 3 */}
+          {step===3 && (
+            <Section title="Step 3 — Choose Your Sync Key" accent={T.cyan}>
+              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"16px", lineHeight:"1.8" }}>
+                Your sync key is the password that links all your devices together. Anyone with your key can read your data — keep it private.
+              </div>
+
+              <div style={{ background:T.card, border:`1px solid ${T.cyan}33`, borderRadius:"8px", padding:"20px", marginBottom:"20px", textAlign:"center" }}>
+                <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>YOUR SYNC KEY</div>
+                <div style={{ fontSize:"24px", color:T.cyan, fontWeight:"700", letterSpacing:"6px", marginBottom:"12px" }}>{syncKey}</div>
+                <Inp value={syncKey} onChange={v => setSyncKey(v.toUpperCase().replace(/[^A-Z0-9-]/g, ""))} placeholder="Or type your own key" />
+                <div style={{ marginTop:"10px" }}>
+                  <Btn onClick={() => setSyncKey(genKey())} color={T.muted} small outline>↻ Generate new key</Btn>
+                </div>
+              </div>
+
+              <div style={{ background:T.amberDim, border:`1px solid ${T.amber}44`, borderRadius:"8px", padding:"12px", marginBottom:"20px", fontSize:"11px", color:T.amber, lineHeight:"1.7" }}>
+                ⚠ Write this key down somewhere safe. If you lose it, your cloud data is still there but you won't be able to reconnect to it.
+              </div>
+
+              {parseError && <div style={{ fontSize:"11px", color:T.red, marginBottom:"12px" }}>{parseError}</div>}
+
+              <div style={{ display:"flex", gap:"8px" }}>
+                <Btn onClick={handleConnect} color={T.cyan} disabled={connecting}>{connecting ? "Connecting..." : "Connect & Sync →"}</Btn>
+                <Btn onClick={() => setStep(2)} color={T.muted} outline small>← Back</Btn>
+              </div>
+            </Section>
+          )}
+
+          {/* Firestore rules reminder */}
+          <Section title="Important: Update Firestore Rules" accent={T.amber}>
+            <div style={{ fontSize:"12px", color:T.muted, lineHeight:"1.8", marginBottom:"14px" }}>
+              Firebase test mode expires after 30 days. To keep it working permanently, update your Firestore Security Rules:
             </div>
-          </Section>
-        </div>
-      );
+            <div style={{ background:"#0a0f0a", border:`1px solid ${T.green}33`, borderRadius:"8px", padding:"16px", marginBottom:"14px", fontFamily:font }}>
+              <div style={{ fontSize:"11px", color:T.muted, marginBottom:"8px" }}>In Firebase Console → Firestore → Rules → paste this:</div>
+              <pre style={{ fontSize:"11px", color:T.green, lineHeight:"1.7", whiteSpace:"pre-wrap" }}>{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /investmentOS/{syncKey} {
+      allow read, write: if true;
     }
-
-    // ══════════════════════════════════════════════════════════
-    // TAB 4: WATCHLIST
-    // ══════════════════════════════════════════════════════════
-    function WatchlistTab({ watchlist, updateWatchlist }) {
-      const [form, setForm] = useState({ ticker: "", fairValue: "", buyZone: "", currentPrice: "", notes: "", status: "WATCH" });
-
-      const add = () => {
-        if (!form.ticker) return;
-        const upside = form.fairValue && form.currentPrice
-          ? (((form.fairValue - form.currentPrice) / form.currentPrice) * 100).toFixed(1)
-          : null;
-        updateWatchlist([{ ...form, upside, id: Date.now() }, ...watchlist]);
-        setForm({ ticker: "", fairValue: "", buyZone: "", currentPrice: "", notes: "", status: "WATCH" });
-      };
-
-      const remove = (i) => updateWatchlist(watchlist.filter((_, idx) => idx !== i));
-      const statusColor = (s) => ({ BUY: T.green, WAIT: T.amber, WATCH: T.blue, AVOID: T.red })[s] || T.muted;
-
-      return (
-        <div>
-          <Section title="Add to Watchlist" accent={T.blue}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "10px", marginBottom: "10px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>TICKER</div>
-                <Input value={form.ticker} onChange={v => setForm(f => ({ ...f, ticker: v.toUpperCase() }))} placeholder="e.g. LLY" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>CURRENT PRICE</div>
-                <Input value={form.currentPrice} onChange={v => setForm(f => ({ ...f, currentPrice: parseFloat(v) || "" }))} placeholder="$" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>FAIR VALUE</div>
-                <Input value={form.fairValue} onChange={v => setForm(f => ({ ...f, fairValue: parseFloat(v) || "" }))} placeholder="$" type="number" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>BUY ZONE</div>
-                <Input value={form.buyZone} onChange={v => setForm(f => ({ ...f, buyZone: parseFloat(v) || "" }))} placeholder="$" type="number" />
-              </div>
+  }
+}`}</pre>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: "10px", marginBottom: "10px" }}>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>NOTES / THESIS</div>
-                <Input value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} placeholder="Why is this interesting?" />
-              </div>
-              <div>
-                <div style={{ fontSize: "10px", color: T.muted, marginBottom: "4px" }}>STATUS</div>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={{
-                  background: T.surface, border: `1px solid ${T.border}`, color: statusColor(form.status),
-                  padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontFamily: font,
-                  width: "100%", outline: "none",
-                }}>
-                  <option value="BUY">BUY</option>
-                  <option value="WATCH">WATCH</option>
-                  <option value="WAIT">WAIT FOR ENTRY</option>
-                  <option value="AVOID">AVOID</option>
-                </select>
-              </div>
-            </div>
-            <Btn onClick={add} color={T.blue}>Add to Watchlist →</Btn>
+            <div style={{ fontSize:"11px", color:T.muted }}>This keeps your data accessible to anyone who knows your sync key.</div>
           </Section>
+        </>
+      )}
+    </div>
+  );
+}
 
-          <Section title={`Watchlist (${watchlist.length})`} accent={T.purple}>
-            {watchlist.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px", color: T.muted, fontSize: "12px" }}>
-                Watchlist is empty. Add stocks you're monitoring above.
+// ══════════════════════════════════════════════════════════
+// TAB 1: PORTFOLIO
+// ══════════════════════════════════════════════════════════
+function PortfolioTab({ portfolio, update }) {
+  const [editing, setEditing] = useState(null);
+  const [newTicker, setNewTicker] = useState("");
+  const [newWeight, setNewWeight] = useState("");
+  const total = portfolio.reduce((s,p) => s+(parseFloat(p.weight)||0), 0);
+  const colors = [T.green, T.blue, T.amber, T.purple, T.red, T.cyan];
+  const wColor = (w) => w/100>0.4 ? T.amber : w/100>0.2 ? T.blue : T.green;
+
+  const add = () => {
+    if (!newTicker || !newWeight) return;
+    update([...portfolio, { ticker:newTicker.toUpperCase(), weight:parseFloat(newWeight), fairValue:null, buyZone:null, thesis:"", stopLoss:null, type:"stock" }]);
+    setNewTicker(""); setNewWeight("");
+  };
+  const upF = (i,f,v) => { const p=[...portfolio]; p[i]={...p[i],[f]:v}; update(p); };
+
+  return (
+    <div>
+      <Section title="Current Allocation" accent={T.green}>
+        <div style={{ marginBottom:"20px" }}>
+          <div style={{ display:"flex", height:"8px", borderRadius:"4px", overflow:"hidden", marginBottom:"8px" }}>
+            {portfolio.filter(p=>p.ticker!=="CASH").map((p,i)=>(
+              <div key={i} style={{ width:`${p.weight}%`, background:colors[i%colors.length], opacity:0.8 }} title={`${p.ticker}: ${p.weight}%`} />
+            ))}
+          </div>
+          <div style={{ display:"flex", gap:"16px", flexWrap:"wrap" }}>
+            {portfolio.map((p,i)=>(
+              <span key={i} style={{ fontSize:"10px", color:colors[i%colors.length], letterSpacing:"1px" }}>■ {p.ticker} {p.weight}%</span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding:"8px 14px", borderRadius:"6px", marginBottom:"16px", background: Math.abs(total-100)<0.5?T.greenDim:T.amberDim, border:`1px solid ${Math.abs(total-100)<0.5?T.green:T.amber}44`, fontSize:"12px", color:Math.abs(total-100)<0.5?T.green:T.amber }}>
+          Total: {total.toFixed(1)}% {Math.abs(total-100)<0.5 ? "✓ Balanced" : "⚠ Adjust to 100%"}
+        </div>
+
+        {portfolio.map((pos,i) => (
+          <div key={i} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"8px" }}>
+            {editing===i ? (
+              <div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                  {[["WEIGHT %","weight","number"],["FAIR VALUE","fairValue","number"],["BUY ZONE","buyZone","number"],["STOP LOSS","stopLoss","number"]].map(([l,f,t])=>(
+                    <div key={f}><div style={{fontSize:"10px",color:T.muted,marginBottom:"4px"}}>{l}</div>
+                    <Inp value={pos[f]||""} onChange={v=>upF(i,f,f==="weight"?parseFloat(v)||0:parseFloat(v)||null)} type={t} placeholder="$" /></div>
+                  ))}
+                </div>
+                <div style={{ marginBottom:"8px" }}>
+                  <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>THESIS</div>
+                  <Textarea value={pos.thesis} onChange={v=>upF(i,"thesis",v)} rows={2} placeholder="Why do you own this?" />
+                </div>
+                <div style={{ display:"flex", gap:"8px" }}>
+                  <Btn onClick={()=>setEditing(null)} color={T.green} small>Save</Btn>
+                  <Btn onClick={()=>{ update(portfolio.filter((_,idx)=>idx!==i)); setEditing(null); }} color={T.red} small outline>Remove</Btn>
+                </div>
               </div>
-            ) : watchlist.map((w, i) => {
-              const sc = statusColor(w.status);
-              const inBuyZone = w.currentPrice && w.buyZone && w.currentPrice <= w.buyZone;
-              return (
-                <div key={w.id || i} style={{
-                  background: T.card,
-                  border: `1px solid ${inBuyZone ? T.green + "66" : T.border}`,
-                  borderLeft: `3px solid ${sc}`,
-                  borderRadius: "8px", padding: "14px", marginBottom: "8px",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "15px", fontWeight: "700", color: T.text }}>{w.ticker}</span>
-                        <Badge color={sc}>{w.status}</Badge>
-                        {inBuyZone && <Badge color={T.green}>IN BUY ZONE</Badge>}
-                        {w.upside && <span style={{ fontSize: "12px", color: w.upside > 0 ? T.green : T.red }}>{w.upside > 0 ? "+" : ""}{w.upside}% upside</span>}
-                      </div>
-                      <div style={{ display: "flex", gap: "16px", marginBottom: "6px" }}>
-                        {w.currentPrice && <span style={{ fontSize: "11px", color: T.muted }}>Now: {fmt(w.currentPrice)}</span>}
-                        {w.fairValue && <span style={{ fontSize: "11px", color: T.amber }}>Fair: {fmt(w.fairValue)}</span>}
-                        {w.buyZone && <span style={{ fontSize: "11px", color: T.green }}>Buy zone: {fmt(w.buyZone)}</span>}
-                      </div>
-                      {w.notes && <div style={{ fontSize: "11px", color: T.muted, lineHeight: "1.6" }}>{w.notes}</div>}
-                    </div>
-                    <Btn onClick={() => remove(i)} color={T.red} small outline>×</Btn>
+            ) : (
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", gap:"10px", alignItems:"center", marginBottom:"6px" }}>
+                    <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{pos.ticker}</span>
+                    <Badge color={wColor(pos.weight)}>{pos.weight}%</Badge>
+                    <Badge color={T.muted} small>{pos.type.toUpperCase()}</Badge>
                   </div>
+                  {pos.thesis && <div style={{ fontSize:"11px", color:T.muted, lineHeight:"1.6", maxWidth:"600px" }}>{pos.thesis.substring(0,120)}{pos.thesis.length>120?"...":""}</div>}
+                  <div style={{ display:"flex", gap:"16px", marginTop:"8px" }}>
+                    {pos.fairValue && <span style={{ fontSize:"11px", color:T.blue }}>Target: {fmt(pos.fairValue)}</span>}
+                    {pos.buyZone   && <span style={{ fontSize:"11px", color:T.green }}>Buy: {fmt(pos.buyZone)}</span>}
+                    {pos.stopLoss  && <span style={{ fontSize:"11px", color:T.red }}>Stop: {fmt(pos.stopLoss)}</span>}
+                    <span style={{ fontSize:"11px", color:T.muted }}>≈ {fmt(40000*pos.weight/100)}</span>
+                  </div>
+                </div>
+                <Btn onClick={()=>setEditing(i)} color={T.blue} small outline>Edit</Btn>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div style={{ background:T.card, border:`1px dashed ${T.border}`, borderRadius:"8px", padding:"16px", marginTop:"12px" }}>
+          <div style={{ fontSize:"11px", color:T.muted, marginBottom:"10px", letterSpacing:"2px" }}>ADD POSITION</div>
+          <div style={{ display:"flex", gap:"8px" }}>
+            <Inp value={newTicker} onChange={setNewTicker} placeholder="TICKER" style={{ width:"100px" }} />
+            <Inp value={newWeight} onChange={setNewWeight} placeholder="Weight %" type="number" style={{ width:"100px" }} />
+            <Btn onClick={add} color={T.green}>Add</Btn>
+          </div>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB 2: JOURNAL
+// ══════════════════════════════════════════════════════════
+function JournalTab({ journal, update }) {
+  const emptyForm = { date:today(), ticker:"", action:"BUY", price:"", shares:"", thesis:"", whatCouldGoWrong:"", target:"", timeline:"", sentiment:"NEUTRAL" };
+  const [form, setForm] = useState(emptyForm);
+  const [expanded, setExpanded] = useState(null);
+  const aColor = (a) => a==="BUY"?T.green:a==="SELL"?T.red:T.amber;
+  const sColor = (s) => s==="BULLISH"?T.green:s==="BEARISH"?T.red:T.muted;
+
+  const add = () => {
+    if (!form.ticker || !form.price) return;
+    update([{ ...form, id:Date.now() }, ...journal]);
+    setForm(emptyForm);
+  };
+
+  return (
+    <div>
+      <Section title="New Journal Entry" accent={T.blue}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>DATE</div><Inp value={form.date} onChange={v=>setForm(f=>({...f,date:v}))} type="date" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={form.ticker} onChange={v=>setForm(f=>({...f,ticker:v.toUpperCase()}))} placeholder="e.g. AMZN" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>ACTION</div>
+            <select value={form.action} onChange={e=>setForm(f=>({...f,action:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:aColor(form.action), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
+              <option value="BUY">BUY</option><option value="SELL">SELL</option><option value="HOLD">HOLD / NOTE</option>
+            </select>
+          </div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>PRICE</div><Inp value={form.price} onChange={v=>setForm(f=>({...f,price:v}))} placeholder="$" type="number" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>SHARES</div><Inp value={form.shares} onChange={v=>setForm(f=>({...f,shares:v}))} placeholder="qty" type="number" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>SENTIMENT</div>
+            <select value={form.sentiment} onChange={e=>setForm(f=>({...f,sentiment:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:sColor(form.sentiment), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
+              <option value="BULLISH">BULLISH</option><option value="NEUTRAL">NEUTRAL</option><option value="BEARISH">BEARISH</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>THESIS</div><Textarea value={form.thesis} onChange={v=>setForm(f=>({...f,thesis:v}))} placeholder="Why are you doing this? Be specific." rows={3} /></div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"10px" }}>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>WHAT COULD MAKE ME WRONG?</div><Textarea value={form.whatCouldGoWrong} onChange={v=>setForm(f=>({...f,whatCouldGoWrong:v}))} rows={2} placeholder="Risks, bear case..." /></div>
+          <div>
+            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TARGET & TIMELINE</div>
+            <Inp value={form.target} onChange={v=>setForm(f=>({...f,target:v}))} placeholder="e.g. $360 in 12-18 months" style={{ marginBottom:"8px" }} />
+            <Inp value={form.timeline} onChange={v=>setForm(f=>({...f,timeline:v}))} placeholder="Exit condition" />
+          </div>
+        </div>
+        <Btn onClick={add} color={T.blue}>Log Entry →</Btn>
+      </Section>
+
+      <Section title={`Journal Log (${journal.length} entries)`} accent={T.purple}>
+        {journal.length===0 ? (
+          <div style={{ textAlign:"center", padding:"40px", color:T.muted, fontSize:"12px" }}>No entries yet. Log your first trade above.</div>
+        ) : journal.map((e,i) => (
+          <div key={e.id} style={{ background:T.card, border:`1px solid ${T.border}`, borderLeft:`3px solid ${aColor(e.action)}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }} onClick={()=>setExpanded(expanded===i?null:i)}>
+              <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
+                <Badge color={aColor(e.action)} small>{e.action}</Badge>
+                <span style={{ fontSize:"14px", fontWeight:"700", color:T.text }}>{e.ticker}</span>
+                {e.price && <span style={{ fontSize:"12px", color:T.muted }}>@ {fmt(e.price)}</span>}
+                {e.shares && <span style={{ fontSize:"12px", color:T.muted }}>× {e.shares}</span>}
+              </div>
+              <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
+                <Badge color={sColor(e.sentiment)} small>{e.sentiment}</Badge>
+                <span style={{ fontSize:"11px", color:T.muted }}>{e.date}</span>
+                <Btn onClick={ev=>{ev.stopPropagation();update(journal.filter(j=>j.id!==e.id));}} color={T.red} small outline>×</Btn>
+                <span style={{ fontSize:"11px", color:T.muted }}>{expanded===i?"▲":"▼"}</span>
+              </div>
+            </div>
+            {expanded===i && (
+              <div style={{ marginTop:"14px", paddingTop:"14px", borderTop:`1px solid ${T.border}` }}>
+                {e.thesis && <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.green, letterSpacing:"2px", marginBottom:"4px" }}>THESIS</div><div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>{e.thesis}</div></div>}
+                {e.whatCouldGoWrong && <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.red, letterSpacing:"2px", marginBottom:"4px" }}>RISKS</div><div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>{e.whatCouldGoWrong}</div></div>}
+                {(e.target||e.timeline) && <div><div style={{ fontSize:"10px", color:T.blue, letterSpacing:"2px", marginBottom:"4px" }}>TARGET & TIMELINE</div><div style={{ fontSize:"12px", color:T.text }}>{e.target} — {e.timeline}</div></div>}
+              </div>
+            )}
+          </div>
+        ))}
+      </Section>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB 3: VALUATION
+// ══════════════════════════════════════════════════════════
+function ValuationTab() {
+  const [f, setF] = useState({ ticker:"", eps:"", peLow:"", peMid:"", peHigh:"", current:"" });
+  const [notes, setNotes] = useState("");
+  const [res, setRes] = useState(null);
+
+  const calc = () => {
+    const e=parseFloat(f.eps), lo=parseFloat(f.peLow), mid=parseFloat(f.peMid), hi=parseFloat(f.peHigh), cur=parseFloat(f.current);
+    if (!e||!lo||!mid||!hi) return;
+    const cons=e*lo, base=e*mid, bull=e*hi, bz=(base/1.3).toFixed(0);
+    const up=cur ? (((base-cur)/cur)*100).toFixed(1) : null;
+    const v=cur ? cur<bz?"STRONG BUY — Below buy zone":cur<base?"BUY — Below fair value":cur<bull?"FAIR — At or near fair value":"EXPENSIVE — Above fair value" : "Enter current price for verdict";
+    const vc=cur ? cur<bz?T.green:cur<base?T.green:cur<bull?T.amber:T.red : T.muted;
+    setRes({ cons, base, bull, bz, up, v, vc });
+    setNotes(`Buy ${f.ticker} at ${fmt(bz)} or below. Target ${fmt(base.toFixed(0))} in 12-18 months.`);
+  };
+
+  return (
+    <div>
+      <Section title="Valuation Calculator" accent={T.amber}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px", marginBottom:"16px" }}>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={f.ticker} onChange={v=>setF(x=>({...x,ticker:v.toUpperCase()}))} placeholder="e.g. NVDA" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>CURRENT PRICE</div><Inp value={f.current} onChange={v=>setF(x=>({...x,current:v}))} placeholder="$" type="number" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>FORWARD EPS</div><Inp value={f.eps} onChange={v=>setF(x=>({...x,eps:v}))} placeholder="e.g. 6.00" type="number" /></div>
+        </div>
+        <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>P/E RANGE (from Macrotrends historical)</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
+          {[["CONSERVATIVE",T.red,"peLow"],["BASE CASE",T.amber,"peMid"],["BULL CASE",T.green,"peHigh"]].map(([l,c,k])=>(
+            <div key={k}><div style={{ fontSize:"10px", color:c, marginBottom:"4px" }}>{l}</div><Inp value={f[k]} onChange={v=>setF(x=>({...x,[k]:v}))} placeholder="e.g. 35" type="number" /></div>
+          ))}
+        </div>
+        <Btn onClick={calc} color={T.amber}>Calculate →</Btn>
+      </Section>
+
+      {res && (
+        <Section title="Results" accent={res.vc}>
+          <div style={{ background:res.vc+"15", border:`1px solid ${res.vc}44`, borderRadius:"8px", padding:"16px", marginBottom:"16px", textAlign:"center" }}>
+            <div style={{ fontSize:"11px", color:res.vc, letterSpacing:"3px", marginBottom:"6px" }}>VERDICT</div>
+            <div style={{ fontSize:"16px", fontWeight:"700", color:res.vc }}>{res.v}</div>
+            {res.up && <div style={{ fontSize:"13px", color:T.muted, marginTop:"6px" }}>{res.up>0?"+":""}{res.up}% to fair value</div>}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
+            {[["CONSERVATIVE",fmt(res.cons.toFixed(0)),T.red],["FAIR VALUE",fmt(res.base.toFixed(0)),T.amber],["BULL CASE",fmt(res.bull.toFixed(0)),T.green],["BUY ZONE",fmt(res.bz),T.blue]].map(([l,v,c])=>(
+              <div key={l} style={{ background:T.card, border:`1px solid ${c}33`, borderTop:`3px solid ${c}`, borderRadius:"8px", padding:"14px", textAlign:"center" }}>
+                <div style={{ fontSize:"10px", color:c, letterSpacing:"1px", marginBottom:"6px" }}>{l}</div>
+                <div style={{ fontSize:"18px", fontWeight:"700", color:c }}>{v}</div>
+                {l==="BUY ZONE" && <div style={{ fontSize:"10px", color:T.muted, marginTop:"4px" }}>30% margin of safety</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px", letterSpacing:"2px" }}>BUY/SELL PLAN</div>
+          <Textarea value={notes} onChange={setNotes} rows={2} />
+        </Section>
+      )}
+
+      <Section title="How to Use" accent={T.muted}>
+        <div style={{ fontSize:"12px", color:T.muted, lineHeight:"1.9" }}>
+          {[["Step 1","Yahoo Finance → Analysis tab → EPS Estimates (next year) = Forward EPS"],["Step 2","Macrotrends.net → search ticker → P/E ratio → note the 3yr low, avg, high"],["Step 3","Enter all 3 values, hit Calculate"],["Rule","Never buy above your base fair value without exceptional reason"],].map(([l,t])=>(
+            <div key={l} style={{ marginBottom:"6px" }}><span style={{ color:T.blue }}>{l}:</span> {t}</div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB 4: WATCHLIST
+// ══════════════════════════════════════════════════════════
+function WatchlistTab({ watchlist, update }) {
+  const [form, setForm] = useState({ ticker:"", fairValue:"", buyZone:"", currentPrice:"", notes:"", status:"WATCH" });
+  const sc = (s) => ({BUY:T.green,WAIT:T.amber,WATCH:T.blue,AVOID:T.red})[s]||T.muted;
+
+  const add = () => {
+    if (!form.ticker) return;
+    const up = form.fairValue&&form.currentPrice ? (((form.fairValue-form.currentPrice)/form.currentPrice)*100).toFixed(1) : null;
+    update([{ ...form, upside:up, id:Date.now() }, ...watchlist]);
+    setForm({ ticker:"", fairValue:"", buyZone:"", currentPrice:"", notes:"", status:"WATCH" });
+  };
+
+  return (
+    <div>
+      <Section title="Add to Watchlist" accent={T.blue}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={form.ticker} onChange={v=>setForm(f=>({...f,ticker:v.toUpperCase()}))} placeholder="e.g. LLY" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>CURRENT PRICE</div><Inp value={form.currentPrice} onChange={v=>setForm(f=>({...f,currentPrice:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>FAIR VALUE</div><Inp value={form.fairValue} onChange={v=>setForm(f=>({...f,fairValue:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>BUY ZONE</div><Inp value={form.buyZone} onChange={v=>setForm(f=>({...f,buyZone:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"3fr 1fr", gap:"10px", marginBottom:"10px" }}>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>NOTES</div><Inp value={form.notes} onChange={v=>setForm(f=>({...f,notes:v}))} placeholder="Why is this interesting?" /></div>
+          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>STATUS</div>
+            <select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:sc(form.status), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
+              <option value="BUY">BUY</option><option value="WATCH">WATCH</option><option value="WAIT">WAIT FOR ENTRY</option><option value="AVOID">AVOID</option>
+            </select>
+          </div>
+        </div>
+        <Btn onClick={add} color={T.blue}>Add to Watchlist →</Btn>
+      </Section>
+
+      <Section title={`Watchlist (${watchlist.length})`} accent={T.purple}>
+        {watchlist.length===0 ? <div style={{ textAlign:"center", padding:"40px", color:T.muted, fontSize:"12px" }}>Watchlist is empty.</div>
+        : watchlist.map((w,i) => {
+          const inBuy = w.currentPrice&&w.buyZone&&w.currentPrice<=w.buyZone;
+          return (
+            <div key={w.id||i} style={{ background:T.card, border:`1px solid ${inBuy?T.green+"66":T.border}`, borderLeft:`3px solid ${sc(w.status)}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", gap:"10px", alignItems:"center", marginBottom:"6px" }}>
+                    <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{w.ticker}</span>
+                    <Badge color={sc(w.status)}>{w.status}</Badge>
+                    {inBuy && <Badge color={T.green}>IN BUY ZONE</Badge>}
+                    {w.upside && <span style={{ fontSize:"12px", color:w.upside>0?T.green:T.red }}>{w.upside>0?"+":""}{w.upside}% upside</span>}
+                  </div>
+                  <div style={{ display:"flex", gap:"16px", marginBottom:"6px" }}>
+                    {w.currentPrice && <span style={{ fontSize:"11px", color:T.muted }}>Now: {fmt(w.currentPrice)}</span>}
+                    {w.fairValue    && <span style={{ fontSize:"11px", color:T.amber }}>Fair: {fmt(w.fairValue)}</span>}
+                    {w.buyZone      && <span style={{ fontSize:"11px", color:T.green }}>Buy zone: {fmt(w.buyZone)}</span>}
+                  </div>
+                  {w.notes && <div style={{ fontSize:"11px", color:T.muted, lineHeight:"1.6" }}>{w.notes}</div>}
+                </div>
+                <Btn onClick={()=>update(watchlist.filter((_,idx)=>idx!==i))} color={T.red} small outline>×</Btn>
+              </div>
+            </div>
+          );
+        })}
+      </Section>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB 5: RESEARCH CHECKLIST
+// ══════════════════════════════════════════════════════════
+const CL = {
+  daily:     { label:"Daily (10 min)",    color:T.green, items:[
+    {id:"d1",text:"Check The Market Ear newsletter",link:"themarketear.com",tag:"Macro"},
+    {id:"d2",text:"Scan Finviz heat map for sector moves",link:"finviz.com/map",tag:"Pulse"},
+    {id:"d3",text:"Google News alerts for your tickers",link:"news.google.com",tag:"News"},
+    {id:"d4",text:"Any position down 5%+? Check why before reacting",link:"",tag:"Risk"},
+  ]},
+  weekly:    { label:"Weekly (30 min)",   color:T.blue, items:[
+    {id:"w1",text:"Run Finviz screener: PEG<1, down 20%+, EPS growth >15%",link:"finviz.com/screener",tag:"Screen"},
+    {id:"w2",text:"Read Stratechery — tech integration insights",link:"stratechery.com",tag:"Research"},
+    {id:"w3",text:"Check earnings calendar for next 2 weeks",link:"earningswhispers.com",tag:"Calendar"},
+    {id:"w4",text:"Is any watchlist stock at or below buy zone?",link:"",tag:"Entry"},
+    {id:"w5",text:"Read one earnings transcript from current holdings",link:"seekingalpha.com",tag:"Deep Dive"},
+  ]},
+  monthly:   { label:"Monthly (60 min)",  color:T.amber, items:[
+    {id:"m1",text:"Re-run valuations on AMZN, INTU, TSM with latest EPS",link:"finance.yahoo.com",tag:"Valuation"},
+    {id:"m2",text:"Write 1 paragraph per holding: thesis still intact?",link:"",tag:"Thesis"},
+    {id:"m3",text:"Find 1-2 new stocks from screener to research",link:"finviz.com",tag:"Pipeline"},
+    {id:"m4",text:"Portfolio performance vs QQQ benchmark",link:"",tag:"Performance"},
+    {id:"m5",text:"Read one Howard Marks memo",link:"oaktree.com/insights",tag:"Macro"},
+    {id:"m6",text:"Update watchlist prices and statuses",link:"",tag:"Watchlist"},
+  ]},
+  quarterly: { label:"Quarterly (4 hrs)", color:T.purple, items:[
+    {id:"q1",text:"Export brokerage statement for the quarter",link:"",tag:"Accounting"},
+    {id:"q2",text:"Update cost basis and shares in spreadsheet",link:"",tag:"Records"},
+    {id:"q3",text:"Calculate return vs QQQ and S&P 500",link:"",tag:"Performance"},
+    {id:"q4",text:"Re-evaluate thesis on every holding",link:"",tag:"Thesis"},
+    {id:"q5",text:"Rebalance any position drifted 3%+ from target",link:"",tag:"Rebalance"},
+    {id:"q6",text:"Record realized gains/losses for tax purposes",link:"",tag:"Tax"},
+    {id:"q7",text:"Update price targets with new EPS estimates",link:"",tag:"Targets"},
+    {id:"q8",text:"Write quarterly portfolio summary paragraph",link:"",tag:"Journal"},
+    {id:"q9",text:"Review trading journal — patterns?",link:"",tag:"Review"},
+  ]},
+};
+const tagC = {Macro:T.amber,Pulse:T.blue,News:T.green,Risk:T.red,Screen:T.purple,Research:T.blue,Calendar:T.amber,Entry:T.green,Valuation:T.amber,Thesis:T.purple,Pipeline:T.blue,Performance:T.green,Accounting:T.amber,Records:T.blue,Tax:T.red,Rebalance:T.green,Targets:T.amber,Journal:T.purple,Review:T.blue,Watchlist:T.cyan};
+
+function ResearchTab({ checks, update }) {
+  const toggle = (id) => { const k=`${id}_${today()}`; update({...checks,[k]:!checks[k]}); };
+  const ck = (id) => !!checks[`${id}_${today()}`];
+
+  return (
+    <div>
+      <div style={{ marginBottom:"16px", padding:"12px 14px", background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", fontSize:"12px", color:T.text }}>
+        📅 {today()} — Checklists reset daily
+      </div>
+      {Object.entries(CL).map(([key,list]) => {
+        const done = list.items.filter(item=>ck(item.id)).length;
+        return (
+          <Section key={key} title={`${list.label} — ${done}/${list.items.length}`} accent={list.color}>
+            <div style={{ background:T.faint, borderRadius:"4px", height:"4px", marginBottom:"14px" }}>
+              <div style={{ width:`${(done/list.items.length)*100}%`, height:"100%", background:list.color, borderRadius:"4px", transition:"width 0.3s" }} />
+            </div>
+            {list.items.map(item => {
+              const checked = ck(item.id);
+              return (
+                <div key={item.id} onClick={()=>toggle(item.id)} style={{ display:"flex", gap:"12px", alignItems:"center", padding:"10px 12px", marginBottom:"4px", background:checked?list.color+"10":T.card, border:`1px solid ${checked?list.color+"44":T.border}`, borderRadius:"6px", cursor:"pointer", transition:"all 0.15s" }}>
+                  <div style={{ width:"16px", height:"16px", minWidth:"16px", border:`2px solid ${checked?list.color:T.muted}`, borderRadius:"3px", background:checked?list.color:"transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", color:T.bg, fontWeight:"700" }}>{checked?"✓":""}</div>
+                  <div style={{ flex:1 }}>
+                    <span style={{ fontSize:"12px", color:checked?T.muted:T.text, textDecoration:checked?"line-through":"none" }}>{item.text}</span>
+                    {item.link && !checked && <span style={{ fontSize:"10px", color:list.color, marginLeft:"8px", opacity:.7 }}>→ {item.link}</span>}
+                  </div>
+                  <Badge color={tagC[item.tag]||T.muted} small>{item.tag}</Badge>
                 </div>
               );
             })}
           </Section>
+        );
+      })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB 6: THESIS
+// ══════════════════════════════════════════════════════════
+function ThesisTab({ thesis, update }) {
+  const [editing, setEditing] = useState(false);
+  const reading = [
+    { title:"Stratechery by Ben Thompson", url:"stratechery.com", why:"Best tech integration analysis on the internet." },
+    { title:"Howard Marks Memos",          url:"oaktree.com/insights", why:"Best macro thinking available for free." },
+    { title:"Sequoia AI Report",           url:"sequoiacap.com", why:"Best forward-looking view on where AI is heading." },
+    { title:"The Market Ear",              url:"themarketear.com", why:"Daily macro summary, data-driven. 10 min read." },
+    { title:"Matt Levine — Money Stuff",   url:"bloomberg.com", why:"Best financial markets commentary available." },
+  ];
+  const missing = [
+    { ticker:"GEV", why:"AI needs power. Industrials winning because of tech. Zero tech correlation.", signal:"Wait for $630", color:T.amber },
+    { ticker:"JPM", why:"AI transforms finance. Moves differently from tech. Fortress balance sheet.", signal:"Wait for pullback below $250", color:T.blue },
+    { ticker:"LLY", why:"AI accelerates drug discovery. Healthcare never correlates with tech crashes.", signal:"Strong buy territory ~$1,025", color:T.green },
+  ];
+
+  return (
+    <div>
+      <Section title="My Investment Thesis" accent={T.green}>
+        <div style={{ marginBottom:"12px", padding:"10px 14px", background:T.card, borderRadius:"6px", fontSize:"11px", color:T.muted }}>
+          When a stock drops 20%, re-read this. Either your thesis still holds (buy more) or something changed (re-evaluate). This is your north star.
         </div>
-      );
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // TAB 5: RESEARCH CHECKLIST
-    // ══════════════════════════════════════════════════════════
-    const CHECKLISTS = {
-      daily: {
-        label: "Daily (10 min)", color: T.green,
-        items: [
-          { id: "d1", text: "Check The Market Ear newsletter", link: "themarketear.com", tag: "Macro" },
-          { id: "d2", text: "Scan Finviz heat map for sector moves", link: "finviz.com/map", tag: "Pulse" },
-          { id: "d3", text: "Check Google News alerts for your tickers", link: "news.google.com", tag: "News" },
-          { id: "d4", text: "Any position down 5%+? Check why before reacting", link: "", tag: "Risk" },
-        ]
-      },
-      weekly: {
-        label: "Weekly (30 min)", color: T.blue,
-        items: [
-          { id: "w1", text: "Run Finviz screener: PEG<1, down 20%+, EPS growth >15%", link: "finviz.com/screener", tag: "Screen" },
-          { id: "w2", text: "Read Stratechery — tech integration insights", link: "stratechery.com", tag: "Research" },
-          { id: "w3", text: "Check earnings calendar for next 2 weeks", link: "earningswhispers.com", tag: "Calendar" },
-          { id: "w4", text: "Is any watchlist stock at or below buy zone?", link: "", tag: "Entry" },
-          { id: "w5", text: "Read one earnings transcript from current holdings", link: "seekingalpha.com", tag: "Deep Dive" },
-        ]
-      },
-      monthly: {
-        label: "Monthly (60 min)", color: T.amber,
-        items: [
-          { id: "m1", text: "Re-run valuations on AMZN, INTU, TSM with latest EPS", link: "finance.yahoo.com", tag: "Valuation" },
-          { id: "m2", text: "Write 1 paragraph on each holding: thesis still intact?", link: "", tag: "Thesis" },
-          { id: "m3", text: "Find 1-2 new stocks from screener to research", link: "finviz.com", tag: "Pipeline" },
-          { id: "m4", text: "Portfolio performance vs QQQ benchmark check", link: "", tag: "Performance" },
-          { id: "m5", text: "Read one Howard Marks memo", link: "oaktree.com/insights", tag: "Macro" },
-          { id: "m6", text: "Update watchlist prices and statuses", link: "", tag: "Watchlist" },
-        ]
-      },
-      quarterly: {
-        label: "Quarterly (4 hrs)", color: T.purple,
-        items: [
-          { id: "q1", text: "Export brokerage statement for the quarter", link: "", tag: "Accounting" },
-          { id: "q2", text: "Update cost basis and shares in spreadsheet", link: "", tag: "Records" },
-          { id: "q3", text: "Calculate portfolio return vs QQQ and S&P 500", link: "", tag: "Performance" },
-          { id: "q4", text: "Re-evaluate thesis on every holding", link: "", tag: "Thesis" },
-          { id: "q5", text: "Rebalance any position drifted 3%+ from target", link: "", tag: "Rebalance" },
-          { id: "q6", text: "Record realized gains/losses for tax purposes", link: "", tag: "Tax" },
-          { id: "q7", text: "Update price targets with new EPS estimates", link: "", tag: "Targets" },
-          { id: "q8", text: "Write quarterly portfolio summary paragraph", link: "", tag: "Journal" },
-          { id: "q9", text: "Review trading journal — what patterns do you notice?", link: "", tag: "Review" },
-        ]
-      }
-    };
-
-    function ResearchTab({ checks, updateChecks }) {
-      const toggle = (id) => {
-        const key = `${id}_${today()}`;
-        updateChecks({ ...checks, [key]: !checks[key] });
-      };
-      const isChecked = (id) => !!checks[`${id}_${today()}`];
-
-      const tagColor = (tag) => {
-        const map = { Macro: T.amber, Pulse: T.blue, News: T.green, Risk: T.red, Screen: T.purple, Research: T.blue, Calendar: T.amber, Entry: T.green, Valuation: T.amber, Thesis: T.purple, Pipeline: T.blue, Performance: T.green, Accounting: T.amber, Records: T.blue, Tax: T.red, Rebalance: T.green, Targets: T.amber, Journal: T.purple, Review: T.blue };
-        return map[tag] || T.muted;
-      };
-
-      return (
-        <div>
-          <div style={{ marginBottom: "16px", padding: "14px", background: T.card, border: `1px solid ${T.border}`, borderRadius: "8px" }}>
-            <div style={{ fontSize: "11px", color: T.muted, marginBottom: "6px" }}>TODAY'S DATE (checklists reset daily)</div>
-            <div style={{ fontSize: "13px", color: T.text }}>{today()}</div>
+        {editing ? (
+          <div>
+            <Textarea value={thesis} onChange={update} rows={16} />
+            <div style={{ marginTop:"10px" }}><Btn onClick={()=>setEditing(false)} color={T.green}>Save Thesis</Btn></div>
           </div>
+        ) : (
+          <div>
+            <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"20px", fontSize:"12px", color:T.text, lineHeight:"1.9", whiteSpace:"pre-wrap", marginBottom:"12px" }}>{thesis}</div>
+            <Btn onClick={()=>setEditing(true)} color={T.green} outline>Edit Thesis</Btn>
+          </div>
+        )}
+      </Section>
 
-          {Object.entries(CHECKLISTS).map(([key, list]) => {
-            const done = list.items.filter(item => isChecked(item.id)).length;
-            return (
-              <Section key={key} title={`${list.label} — ${done}/${list.items.length}`} accent={list.color}>
-                <div style={{ background: T.faint, borderRadius: "4px", height: "4px", marginBottom: "14px" }}>
-                  <div style={{
-                    width: `${(done / list.items.length) * 100}%`,
-                    height: "100%", background: list.color, borderRadius: "4px",
-                    transition: "width 0.3s",
-                  }} />
-                </div>
-                {list.items.map(item => {
-                  const checked = isChecked(item.id);
-                  return (
-                    <div key={item.id} onClick={() => toggle(item.id)} style={{
-                      display: "flex", gap: "12px", alignItems: "center",
-                      padding: "10px 12px", marginBottom: "4px",
-                      background: checked ? list.color + "10" : T.card,
-                      border: `1px solid ${checked ? list.color + "44" : T.border}`,
-                      borderRadius: "6px", cursor: "pointer", transition: "all 0.15s",
-                    }}>
-                      <div style={{
-                        width: "16px", height: "16px", minWidth: "16px",
-                        border: `2px solid ${checked ? list.color : T.muted}`,
-                        borderRadius: "3px", background: checked ? list.color : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "10px", color: T.bg, fontWeight: "700",
-                      }}>{checked ? "✓" : ""}</div>
-                      <div style={{ flex: 1 }}>
-                        <span style={{
-                          fontSize: "12px",
-                          color: checked ? T.muted : T.text,
-                          textDecoration: checked ? "line-through" : "none",
-                        }}>{item.text}</span>
-                        {item.link && !checked && (
-                          <span style={{ fontSize: "10px", color: list.color, marginLeft: "8px", opacity: 0.7 }}>
-                            → {item.link}
-                          </span>
-                        )}
-                      </div>
-                      <Badge color={tagColor(item.tag)} small>{item.tag}</Badge>
-                    </div>
-                  );
-                })}
-              </Section>
-            );
-          })}
-        </div>
-      );
-    }
+      <Section title="Macro Reading List" accent={T.amber}>
+        {reading.map((r,i) => (
+          <div key={i} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
+            <div style={{ fontSize:"13px", fontWeight:"700", color:T.text, marginBottom:"2px" }}>{r.title}</div>
+            <div style={{ fontSize:"11px", color:T.amber, marginBottom:"4px" }}>{r.url}</div>
+            <div style={{ fontSize:"11px", color:T.muted }}>{r.why}</div>
+          </div>
+        ))}
+      </Section>
 
-    // ══════════════════════════════════════════════════════════
-    // TAB 6: THESIS
-    // ══════════════════════════════════════════════════════════
-    function ThesisTab({ thesis, updateThesis }) {
-      const [editing, setEditing] = useState(false);
-      const [reading, setReading] = useState([
-        { title: "Stratechery by Ben Thompson", url: "stratechery.com", why: "Best tech integration analysis on the internet. Weekly deep dives.", checked: false },
-        { title: "Howard Marks Memos", url: "oaktree.com/insights", why: "Best macro thinking available for free. Teaches you HOW to think.", checked: false },
-        { title: "Sequoia AI Report", url: "sequoiacap.com", why: "Best forward-looking view on where AI is heading.", checked: false },
-        { title: "The Market Ear", url: "themarketear.com", why: "Daily macro summary, data-driven. 10 min read.", checked: false },
-        { title: "Matt Levine — Money Stuff", url: "bloomberg.com/opinion/authors/ARbTQlRLRjE/matthew-s-levine", why: "Best financial markets commentary available. Free on Bloomberg.", checked: false },
-      ]);
+      <Section title="Diversification Upgrades — Missing Pieces" accent={T.red}>
+        <div style={{ fontSize:"12px", color:T.muted, marginBottom:"14px" }}>~80% tech correlated. These reduce correlation while fitting your "tech integrates into everything" thesis.</div>
+        {missing.map((m,i) => (
+          <div key={i} style={{ background:T.card, border:`1px solid ${m.color}33`, borderLeft:`3px solid ${m.color}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
+            <div style={{ fontSize:"14px", fontWeight:"700", color:T.text, marginBottom:"4px" }}>{m.ticker}</div>
+            <div style={{ fontSize:"12px", color:T.muted, marginBottom:"6px", lineHeight:"1.6" }}>{m.why}</div>
+            <Badge color={m.color} small>{m.signal}</Badge>
+          </div>
+        ))}
+      </Section>
+    </div>
+  );
+}
 
-      return (
-        <div>
-          <Section title="My Investment Thesis" accent={T.green}>
-            <div style={{ marginBottom: "12px", padding: "10px 14px", background: T.card, borderRadius: "6px", fontSize: "11px", color: T.muted }}>
-              Write your thesis clearly. When a stock drops 20%, re-read this. Either your thesis still holds (buy more) or something changed (re-evaluate). This document is your north star.
-            </div>
-            {editing ? (
-              <div>
-                <Textarea value={thesis} onChange={updateThesis} rows={16} />
-                <div style={{ marginTop: "10px" }}>
-                  <Btn onClick={() => setEditing(false)} color={T.green}>Save Thesis</Btn>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div style={{
-                  background: T.card, border: `1px solid ${T.border}`,
-                  borderRadius: "8px", padding: "20px",
-                  fontSize: "12px", color: T.text, lineHeight: "1.9",
-                  whiteSpace: "pre-wrap", marginBottom: "12px",
-                }}>{thesis}</div>
-                <Btn onClick={() => setEditing(true)} color={T.green} outline>Edit Thesis</Btn>
-              </div>
-            )}
-          </Section>
-
-          <Section title="Macro Reading List" accent={T.amber}>
-            <div style={{ fontSize: "12px", color: T.muted, marginBottom: "14px", lineHeight: "1.7" }}>
-              One hour/week on these sources and your macro thinking sharpens dramatically in 6 months.
-            </div>
-            {reading.map((r, i) => (
-              <div key={i} style={{
-                background: T.card, border: `1px solid ${T.border}`,
-                borderRadius: "8px", padding: "14px", marginBottom: "8px",
-                display: "flex", gap: "12px", alignItems: "flex-start",
-              }}>
-                <div
-                  onClick={() => setReading(list => list.map((item, idx) => idx === i ? { ...item, checked: !item.checked } : item))}
-                  style={{
-                    width: "16px", height: "16px", minWidth: "16px",
-                    border: `2px solid ${r.checked ? T.amber : T.muted}`,
-                    borderRadius: "3px", background: r.checked ? T.amber : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "10px", color: T.bg, fontWeight: "700", cursor: "pointer", marginTop: "2px",
-                  }}
-                >{r.checked ? "✓" : ""}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "13px", fontWeight: "700", color: r.checked ? T.muted : T.text, marginBottom: "2px" }}>{r.title}</div>
-                  <div style={{ fontSize: "11px", color: T.amber, marginBottom: "4px" }}>{r.url}</div>
-                  <div style={{ fontSize: "11px", color: T.muted, lineHeight: "1.6" }}>{r.why}</div>
-                </div>
-              </div>
-            ))}
-          </Section>
-
-          <Section title="Diversification Upgrade — Missing Pieces" accent={T.red}>
-            <div style={{ fontSize: "12px", color: T.muted, marginBottom: "14px", lineHeight: "1.7" }}>
-              Your portfolio is ~80% correlated to tech. These positions would genuinely reduce correlation while still fitting your "tech integrates into everything" thesis.
-            </div>
-            {[
-              { ticker: "GEV", why: "AI needs power. Industrials company winning because of tech. Zero tech correlation.", signal: "Fairly valued at $811 — wait for $630", color: T.amber },
-              { ticker: "JPM", why: "AI transforms finance. Moves differently from tech. Fortress balance sheet.", signal: "Slightly expensive — wait for pullback below $250", color: T.blue },
-              { ticker: "LLY", why: "AI accelerates drug discovery. Healthcare never correlates with tech crashes.", signal: "Strong buy territory at current price of ~$1,025", color: T.green },
-            ].map((item, i) => (
-              <div key={i} style={{
-                background: T.card,
-                border: `1px solid ${item.color}33`,
-                borderLeft: `3px solid ${item.color}`,
-                borderRadius: "8px", padding: "14px", marginBottom: "8px",
-              }}>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: T.text, marginBottom: "4px" }}>{item.ticker}</div>
-                <div style={{ fontSize: "12px", color: T.muted, marginBottom: "6px", lineHeight: "1.6" }}>{item.why}</div>
-                <Badge color={item.color} small>{item.signal}</Badge>
-              </div>
-            ))}
-          </Section>
-        </div>
-      );
-    }
-
-    // ── RENDER ──────────────────────────────────────────────────
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+// ── RENDER ─────────────────────────────────────────────────
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
 </body>
 </html>
