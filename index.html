@@ -1,907 +1,532 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Investment OS</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-  <!-- Firebase Compat SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #04070f; font-family: 'IBM Plex Mono', monospace; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #080e1a; }
-    ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
-    input, textarea, select, button { font-family: inherit; }
-    select option { background: #080e1a; color: #e2e8f0; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-    @keyframes spin { to{transform:rotate(360deg)} }
-    .fade-in { animation: fadeIn 0.25s ease forwards; }
-    .spin { animation: spin 1s linear infinite; display:inline-block; }
-    .pulsing { animation: pulse 2s ease infinite; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Investment OS</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#04070f;font-family:'IBM Plex Mono',monospace;color:#e2e8f0}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#080e1a}
+::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:3px}
+input,textarea,select,button{font-family:'IBM Plex Mono',monospace}
+select option{background:#080e1a;color:#e2e8f0}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.fade{animation:fadeIn .2s ease forwards}
+.pulse{animation:pulse 2s ease infinite}
+</style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+const e = React.createElement;
+const {useState, useEffect, useCallback} = React;
 
-<script type="text/babel">
-const { useState, useEffect, useCallback, useRef } = React;
-
-// ── THEME ──────────────────────────────────────────────────
-const T = {
-  bg:"#04070f", surface:"#080e1a", card:"#0c1424",
-  border:"#112240", borderBright:"#1e3a5f",
-  green:"#00ff88", greenDim:"#00ff8840",
-  blue:"#4fc3f7", blueDim:"#4fc3f720",
-  amber:"#ffb347", amberDim:"#ffb34720",
-  red:"#ff4757", redDim:"#ff475720",
-  purple:"#c084fc", purpleDim:"#c084fc20",
-  cyan:"#22d3ee", cyanDim:"#22d3ee20",
-  text:"#e2e8f0", muted:"#64748b", faint:"#1e2d40",
-};
-const font = "'IBM Plex Mono', monospace";
-
-// ── INITIAL DATA ───────────────────────────────────────────
-const INIT = {
-  portfolio: [
-    { ticker:"QQQ",  weight:50, fairValue:650,  buyZone:500, thesis:"Tech/AI infrastructure basket — companies building the backbone of the AI era", stopLoss:450, type:"etf" },
-    { ticker:"VXUS", weight:15, fairValue:68,   buyZone:52,  thesis:"Global diversification — emerging + developed markets in digitalization era", stopLoss:44, type:"etf" },
-    { ticker:"AMZN", weight:10, fairValue:360,  buyZone:277, thesis:"$200B capex conviction bet on AI infrastructure. $244B backlog already locked.", stopLoss:170, type:"stock" },
-    { ticker:"INTU", weight:10, fairValue:694,  buyZone:534, thesis:"Fast AI adopter, 56% below fair value. Market overreacted to AI disruption fears.", stopLoss:360, type:"stock" },
-    { ticker:"TSM",  weight:10, fairValue:439,  buyZone:338, thesis:"Monopoly on advanced chip manufacturing. 2nm fully booked. AI can't exist without TSM.", stopLoss:240, type:"stock" },
-    { ticker:"CASH", weight:5,  fairValue:null, buyZone:null,thesis:"Dip reserve: QQQ -7% → $800, QQQ -12% → $800, QQQ -20% → $400", stopLoss:null, type:"cash" },
-  ],
-  journal: [],
-  watchlist: [
-    { ticker:"LLY",  fairValue:1713, buyZone:1318, currentPrice:1082, upside:58,  notes:"GLP-1 king. Q2 oral pill catalyst.", status:"BUY",  id:1 },
-    { ticker:"GEV",  fairValue:819,  buyZone:630,  currentPrice:811,  upside:1,   notes:"AI needs power. $150B backlog. Wait for $630.", status:"WAIT", id:2 },
-    { ticker:"NVDA", fairValue:270,  buyZone:208,  currentPrice:189,  upside:43,  notes:"AI chip king on sale. 37/39 analyst buys.", status:"BUY",  id:3 },
-    { ticker:"LULU", fairValue:350,  buyZone:192,  currentPrice:170,  upside:106, notes:"14x P/E for premium brand. New CEO catalyst needed.", status:"WATCH",id:4 },
-  ],
-  thesis: `My macro thesis is that technology is not a sector — it is infrastructure that will integrate into every industry. The companies that win are not just pure tech companies, but sector leaders who adopt technology the fastest.
-
-QQQ (50%): Building the tools, platforms, and infrastructure that all other industries will run on. Stable compounding core.
-
-Emerging Markets (15%): Developing economies are in the digitalization phase that developed markets went through 20-30 years ago. Growth curves are exponential at this stage.
-
-Individual Stocks (30%): Companies either building critical AI infrastructure (TSM), adopting AI faster than peers while undervalued (INTU), or making massive conviction bets on the AI era (AMZN $200B capex).
-
-What would break this thesis:
-- AI proves to be a bubble with no real enterprise ROI
-- Geopolitical shock disrupts semiconductor supply chains
-- Regulatory crackdown on big tech disrupts the ecosystem`,
-  checks: {},
+const C = {
+  bg:"#04070f",surface:"#080e1a",card:"#0c1424",
+  border:"#112240",green:"#00ff88",blue:"#4fc3f7",
+  amber:"#ffb347",red:"#ff4757",purple:"#c084fc",
+  cyan:"#22d3ee",text:"#e2e8f0",muted:"#64748b",faint:"#1e2d40"
 };
 
-// ── LOCAL STORAGE ──────────────────────────────────────────
+const INIT_PORTFOLIO = [
+  {ticker:"QQQ", weight:50, fairValue:650, buyZone:500, stopLoss:450, type:"etf", thesis:"Tech/AI infrastructure basket — companies building the backbone of the AI era"},
+  {ticker:"VXUS",weight:15, fairValue:68,  buyZone:52,  stopLoss:44,  type:"etf", thesis:"Global diversification — emerging + developed markets in digitalization era"},
+  {ticker:"AMZN",weight:10, fairValue:360, buyZone:277, stopLoss:170, type:"stock",thesis:"$200B capex conviction bet on AI infrastructure. $244B backlog already locked."},
+  {ticker:"INTU",weight:10, fairValue:694, buyZone:534, stopLoss:360, type:"stock",thesis:"Fast AI adopter, 56% below fair value. QuickBooks moat intact."},
+  {ticker:"TSM", weight:10, fairValue:439, buyZone:338, stopLoss:240, type:"stock",thesis:"Monopoly on advanced chip manufacturing. 2nm fully booked. AI can't exist without TSM."},
+  {ticker:"CASH",weight:5,  fairValue:null,buyZone:null, stopLoss:null,type:"cash", thesis:"Dip reserve: QQQ -7% > $800, QQQ -12% > $800, QQQ -20% > $400"},
+];
+const INIT_WATCHLIST = [
+  {id:1,ticker:"LLY", fairValue:1713,buyZone:1318,currentPrice:1082,upside:58, notes:"GLP-1 king. Q2 oral pill catalyst.",status:"BUY"},
+  {id:2,ticker:"GEV", fairValue:819, buyZone:630, currentPrice:811, upside:1,  notes:"AI needs power. $150B backlog. Wait for $630.",status:"WAIT"},
+  {id:3,ticker:"NVDA",fairValue:270, buyZone:208, currentPrice:189, upside:43, notes:"AI chip king on sale. 37/39 analyst buys.",status:"BUY"},
+  {id:4,ticker:"LULU",fairValue:350, buyZone:192, currentPrice:170, upside:106,notes:"14x P/E for premium brand. New CEO catalyst needed.",status:"WATCH"},
+];
+const INIT_THESIS = "My macro thesis is that technology is not a sector — it is infrastructure that will integrate into every industry.\n\nQQQ (50%): Building the tools and infrastructure that all other industries will run on.\n\nEmerging Markets (15%): Developing economies in the digitalization phase. Growth curves are exponential.\n\nIndividual Stocks (30%): Companies building critical AI infrastructure (TSM), adopting AI while undervalued (INTU), or making massive conviction bets on AI (AMZN $200B capex).\n\nWhat would break this thesis:\n- AI proves to be a bubble with no real enterprise ROI\n- Geopolitical shock disrupts semiconductor supply chains\n- Regulatory crackdown on big tech";
+
 const ls = {
-  get: (k, def) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):def; } catch { return def; } },
-  set: (k, v)   => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get:(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 };
 
-// ── FIREBASE SINGLETON ─────────────────────────────────────
-let fbDb = null;
-let fbUnsubscribe = null;
-
-function initFirebase(config) {
-  try {
-    if (firebase.apps.length) {
-      firebase.apps.forEach(app => app.delete());
-    }
-    firebase.initializeApp(config);
-    fbDb = firebase.firestore();
+let fbDb=null, fbUnsub=null;
+function initFb(cfg){
+  try{
+    if(firebase.apps.length) firebase.apps.forEach(function(a){a.delete();});
+    firebase.initializeApp(cfg);
+    fbDb=firebase.firestore();
     return true;
-  } catch(e) { console.error("Firebase init error:", e); return false; }
+  }catch(err){console.error(err);return false;}
 }
 
-// ── HELPERS ────────────────────────────────────────────────
-const fmt = (n) => n==null ? "—" : `$${Number(n).toLocaleString()}`;
-const today = () => new Date().toISOString().split("T")[0];
-const genKey = () => Math.random().toString(36).slice(2,8).toUpperCase() + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
+const fmt = function(n){return n==null?"—":"$"+Number(n).toLocaleString();};
+const today = function(){return new Date().toISOString().split("T")[0];};
+const genKey = function(){return Math.random().toString(36).slice(2,6).toUpperCase()+"-"+Math.random().toString(36).slice(2,8).toUpperCase();};
 
-function Badge({ color, children, small }) {
-  return <span style={{ background:color+"22", color, border:`1px solid ${color}44`, padding:small?"1px 6px":"2px 8px", borderRadius:"3px", fontSize:small?"10px":"11px", fontWeight:"700", letterSpacing:"1px" }}>{children}</span>;
+const baseInput = {background:C.surface,border:"1px solid "+C.border,color:C.text,padding:"8px 12px",borderRadius:"6px",fontSize:"12px",outline:"none",width:"100%",boxSizing:"border-box"};
+
+function merge(a,b){return Object.assign({},a,b||{});}
+
+function Badge(props){
+  return e("span",{style:{background:props.color+"22",color:props.color,border:"1px solid "+props.color+"44",padding:props.small?"1px 6px":"2px 8px",borderRadius:"3px",fontSize:props.small?"10px":"11px",fontWeight:"700",letterSpacing:"1px"}},props.children);
 }
-
-function Section({ title, accent, children }) {
-  return (
-    <div style={{ marginBottom:"28px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"16px", paddingBottom:"10px", borderBottom:`1px solid ${T.border}` }}>
-        <div style={{ width:"3px", height:"16px", background:accent||T.green, borderRadius:"2px" }} />
-        <span style={{ fontSize:"11px", color:accent||T.green, letterSpacing:"3px", textTransform:"uppercase" }}>{title}</span>
-      </div>
-      {children}
-    </div>
+function Inp(props){
+  return e("input",{type:props.type||"text",value:props.value,onChange:function(ev){props.onChange(ev.target.value);},placeholder:props.placeholder||"",style:merge(baseInput,props.extraStyle)});
+}
+function TA(props){
+  return e("textarea",{value:props.value,onChange:function(ev){props.onChange(ev.target.value);},placeholder:props.placeholder||"",rows:props.rows||3,style:merge(baseInput,{resize:"vertical",padding:"10px 12px"})});
+}
+function Btn(props){
+  var col=props.color||C.green;
+  return e("button",{onClick:props.onClick,disabled:props.disabled,style:{background:props.outline?"transparent":col+"22",border:"1px solid "+col+(props.disabled?"33":"66"),color:props.disabled?C.muted:col,padding:props.small?"5px 12px":"8px 16px",borderRadius:"6px",cursor:props.disabled?"not-allowed":"pointer",fontSize:props.small?"11px":"12px",fontWeight:"600",opacity:props.disabled?.5:1}},props.children);
+}
+function Section(props){
+  return e("div",{style:{marginBottom:"28px"}},
+    e("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"16px",paddingBottom:"10px",borderBottom:"1px solid "+C.border}},
+      e("div",{style:{width:"3px",height:"16px",background:props.accent||C.green,borderRadius:"2px"}}),
+      e("span",{style:{fontSize:"11px",color:props.accent||C.green,letterSpacing:"3px",textTransform:"uppercase"}},props.title)
+    ),
+    props.children
   );
 }
-
-function Inp({ value, onChange, placeholder, type="text", style={} }) {
-  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-    style={{ background:T.surface, border:`1px solid ${T.border}`, color:T.text, padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, outline:"none", width:"100%", boxSizing:"border-box", ...style }} />;
+function Label(props){
+  return e("div",{style:{fontSize:"10px",color:props.color||C.muted,marginBottom:"4px",letterSpacing:"1px"}},props.text);
+}
+function Card(props){
+  return e("div",{style:merge({background:C.card,border:"1px solid "+C.border,borderRadius:"8px",padding:"16px",marginBottom:"8px"},props.extraStyle)},props.children);
 }
 
-function Textarea({ value, onChange, placeholder, rows=3 }) {
-  return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
-    style={{ background:T.surface, border:`1px solid ${T.border}`, color:T.text, padding:"10px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical" }} />;
-}
-
-function Btn({ onClick, children, color, small, outline, disabled }) {
-  const c = color||T.green;
-  return <button onClick={onClick} disabled={disabled} style={{ background:outline?"transparent":c+"22", border:`1px solid ${c}${disabled?"33":"66"}`, color:disabled?T.muted:c, padding:small?"5px 12px":"8px 16px", borderRadius:"6px", cursor:disabled?"not-allowed":"pointer", fontSize:small?"11px":"12px", fontFamily:font, fontWeight:"600", letterSpacing:"0.5px", opacity:disabled?0.5:1 }}>{children}</button>;
-}
-
-// ── TABS ───────────────────────────────────────────────────
-const TABS = [
-  { id:"portfolio", label:"Portfolio", icon:"◈" },
-  { id:"journal",   label:"Journal",   icon:"◎" },
-  { id:"valuation", label:"Valuation", icon:"◆" },
-  { id:"watchlist", label:"Watchlist", icon:"◉" },
-  { id:"research",  label:"Research",  icon:"◐" },
-  { id:"thesis",    label:"Thesis",    icon:"◑" },
-  { id:"sync",      label:"Sync",      icon:"⟳" },
+const TABS=[
+  {id:"portfolio",label:"Portfolio",icon:"◈"},
+  {id:"journal",  label:"Journal",  icon:"◎"},
+  {id:"valuation",label:"Valuation",icon:"◆"},
+  {id:"watchlist",label:"Watchlist",icon:"◉"},
+  {id:"research", label:"Research", icon:"◐"},
+  {id:"thesis",   label:"Thesis",   icon:"◑"},
+  {id:"sync",     label:"Sync",     icon:"⟳"},
 ];
 
-// ══════════════════════════════════════════════════════════
-// MAIN APP
-// ══════════════════════════════════════════════════════════
-export default function App() {
-  const [tab, setTab] = useState("portfolio");
+function App(){
+  var s = useState;
+  var tab=s("portfolio"), setTab=tab[1]; tab=tab[0];
+  var pf=s(INIT_PORTFOLIO), setPf=pf[1]; pf=pf[0];
+  var jn=s([]), setJn=jn[1]; jn=jn[0];
+  var wl=s(INIT_WATCHLIST), setWl=wl[1]; wl=wl[0];
+  var th=s(INIT_THESIS), setTh=th[1]; th=th[0];
+  var ck=s({}), setCk=ck[1]; ck=ck[0];
+  var sc=s(null), setSc=sc[1]; sc=sc[0];
+  var ss=s("offline"), setSs=ss[1]; ss=ss[0];
+  var sm=s(""), setSm=sm[1]; sm=sm[0];
+  var ld=s(false), setLd=ld[1]; ld=ld[0];
 
-  // Data state
-  const [portfolio, setPortfolio] = useState(INIT.portfolio);
-  const [journal,   setJournal]   = useState(INIT.journal);
-  const [watchlist, setWatchlist] = useState(INIT.watchlist);
-  const [thesis,    setThesis]    = useState(INIT.thesis);
-  const [checks,    setChecks]    = useState(INIT.checks);
+  useEffect(function(){
+    setPf(ls.get("inv_portfolio",INIT_PORTFOLIO));
+    setJn(ls.get("inv_journal",[]));
+    setWl(ls.get("inv_watchlist",INIT_WATCHLIST));
+    setTh(ls.get("inv_thesis",INIT_THESIS));
+    setCk(ls.get("inv_checks",{}));
+    var cfg=ls.get("inv_syncCfg",null);
+    if(cfg) setSc(cfg);
+    setLd(true);
+  },[]);
 
-  // Sync state
-  const [syncConfig,  setSyncConfig]  = useState(null); // { firebaseConfig, syncKey }
-  const [syncStatus,  setSyncStatus]  = useState("offline"); // offline | connecting | synced | syncing | error
-  const [syncMsg,     setSyncMsg]     = useState("");
-  const [loaded,      setLoaded]      = useState(false);
+  useEffect(function(){
+    if(!ld||!sc) return;
+    connectFb(sc);
+    return function(){if(fbUnsub){fbUnsub();fbUnsub=null;}};
+  },[ld,sc]);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    setPortfolio(ls.get("inv_portfolio", INIT.portfolio));
-    setJournal(  ls.get("inv_journal",   INIT.journal));
-    setWatchlist(ls.get("inv_watchlist", INIT.watchlist));
-    setThesis(   ls.get("inv_thesis",    INIT.thesis));
-    setChecks(   ls.get("inv_checks",    INIT.checks));
-    const cfg = ls.get("inv_syncConfig", null);
-    if (cfg) {
-      setSyncConfig(cfg);
-    }
-    setLoaded(true);
-  }, []);
-
-  // Connect to Firebase when syncConfig is available
-  useEffect(() => {
-    if (!loaded || !syncConfig) return;
-    connectFirebase(syncConfig);
-    return () => { if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; } };
-  }, [loaded, syncConfig]);
-
-  function connectFirebase(cfg) {
-    setSyncStatus("connecting");
-    setSyncMsg("Connecting to cloud...");
-    try {
-      const ok = initFirebase(cfg.firebaseConfig);
-      if (!ok) { setSyncStatus("error"); setSyncMsg("Firebase init failed. Check your config."); return; }
-
-      const docRef = fbDb.collection("investmentOS").doc(cfg.syncKey);
-
-      // Subscribe to realtime updates
-      if (fbUnsubscribe) fbUnsubscribe();
-      fbUnsubscribe = docRef.onSnapshot(
-        (snap) => {
-          if (snap.exists) {
-            const data = snap.data();
-            if (data.portfolio) { setPortfolio(data.portfolio); ls.set("inv_portfolio", data.portfolio); }
-            if (data.journal)   { setJournal(data.journal);     ls.set("inv_journal",   data.journal); }
-            if (data.watchlist) { setWatchlist(data.watchlist); ls.set("inv_watchlist", data.watchlist); }
-            if (data.thesis)    { setThesis(data.thesis);       ls.set("inv_thesis",    data.thesis); }
-            if (data.checks)    { setChecks(data.checks);       ls.set("inv_checks",    data.checks); }
+  function connectFb(cfg){
+    setSs("connecting");
+    try{
+      var ok=initFb(cfg.firebaseConfig);
+      if(!ok){setSs("error");setSm("Firebase init failed. Check your config.");return;}
+      if(fbUnsub) fbUnsub();
+      fbUnsub=fbDb.collection("investmentOS").doc(cfg.syncKey).onSnapshot(
+        function(snap){
+          if(snap.exists){
+            var d=snap.data();
+            if(d.portfolio){setPf(d.portfolio);ls.set("inv_portfolio",d.portfolio);}
+            if(d.journal)  {setJn(d.journal);  ls.set("inv_journal",d.journal);}
+            if(d.watchlist){setWl(d.watchlist); ls.set("inv_watchlist",d.watchlist);}
+            if(d.thesis)   {setTh(d.thesis);    ls.set("inv_thesis",d.thesis);}
+            if(d.checks)   {setCk(d.checks);    ls.set("inv_checks",d.checks);}
           }
-          setSyncStatus("synced");
-          setSyncMsg("All devices synced");
+          setSs("synced");setSm("All devices synced");
         },
-        (err) => {
-          setSyncStatus("error");
-          setSyncMsg("Sync error: " + err.message);
-        }
+        function(err){setSs("error");setSm("Sync error: "+err.message);}
       );
-    } catch(e) {
-      setSyncStatus("error");
-      setSyncMsg("Connection failed: " + e.message);
+    }catch(err){setSs("error");setSm("Connection failed: "+err.message);}
+  }
+
+  var save=useCallback(function(key,val){
+    ls.set("inv_"+key,val);
+    if(fbDb&&sc){
+      setSs("syncing");
+      fbDb.collection("investmentOS").doc(sc.syncKey)
+        .set(Object.defineProperty({},""+key,{value:val,enumerable:true}),{merge:true})
+        .then(function(){setSs("synced");setSm("All devices synced");})
+        .catch(function(err){setSs("error");setSm("Save failed: "+err.message);});
+    }
+  },[sc]);
+
+  // simpler save with dynamic key
+  function saveKey(key,val){
+    ls.set("inv_"+key,val);
+    if(fbDb&&sc){
+      setSs("syncing");
+      var obj={};obj[key]=val;
+      fbDb.collection("investmentOS").doc(sc.syncKey)
+        .set(obj,{merge:true})
+        .then(function(){setSs("synced");setSm("All devices synced");})
+        .catch(function(err){setSs("error");setSm("Save failed: "+err.message);});
     }
   }
 
-  // Save to both localStorage and Firestore
-  const save = useCallback((key, val) => {
-    ls.set("inv_" + key, val);
-    if (fbDb && syncConfig) {
-      setSyncStatus("syncing");
-      fbDb.collection("investmentOS").doc(syncConfig.syncKey)
-        .set({ [key]: val }, { merge: true })
-        .then(() => { setSyncStatus("synced"); setSyncMsg("All devices synced"); })
-        .catch((e) => { setSyncStatus("error"); setSyncMsg("Save failed: " + e.message); });
-    }
-  }, [syncConfig]);
+  function upPf(v){setPf(v);saveKey("portfolio",v);}
+  function upJn(v){setJn(v);saveKey("journal",v);}
+  function upWl(v){setWl(v);saveKey("watchlist",v);}
+  function upTh(v){setTh(v);saveKey("thesis",v);}
+  function upCk(v){setCk(v);saveKey("checks",v);}
 
-  const upPortfolio = (v) => { setPortfolio(v); save("portfolio", v); };
-  const upJournal   = (v) => { setJournal(v);   save("journal",   v); };
-  const upWatchlist = (v) => { setWatchlist(v); save("watchlist", v); };
-  const upThesis    = (v) => { setThesis(v);    save("thesis",    v); };
-  const upChecks    = (v) => { setChecks(v);    save("checks",    v); };
-
-  const activateSyncConfig = (cfg) => {
-    ls.set("inv_syncConfig", cfg);
-    setSyncConfig(cfg);
-    connectFirebase(cfg);
-  };
-
-  const disconnectSync = () => {
-    if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; }
-    ls.set("inv_syncConfig", null);
-    setSyncConfig(null);
-    setSyncStatus("offline");
-    setSyncMsg("");
-    fbDb = null;
-    if (firebase.apps.length) firebase.apps.forEach(a => a.delete());
-  };
-
-  if (!loaded) return (
-    <div style={{ background:T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:font, color:T.green }}>
-      Loading investment system...
-    </div>
-  );
-
-  const statusColor = { offline:T.muted, connecting:T.amber, syncing:T.amber, synced:T.green, error:T.red }[syncStatus];
-  const statusIcon  = { offline:"○", connecting:"◌", syncing:"◌", synced:"●", error:"✕" }[syncStatus];
-
-  return (
-    <div style={{ background:T.bg, minHeight:"100vh", fontFamily:font, color:T.text }}>
-
-      {/* Header */}
-      <div style={{ borderBottom:`1px solid ${T.border}`, padding:"14px 24px", display:"flex", justifyContent:"space-between", alignItems:"center", background:T.surface }}>
-        <div>
-          <div style={{ fontSize:"11px", color:T.green, letterSpacing:"4px", textTransform:"uppercase" }}>◈ Investment OS</div>
-          <div style={{ fontSize:"12px", color:T.muted, marginTop:"2px" }}>Personal trading system · $40,000</div>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:"16px" }}>
-          {/* Sync status pill */}
-          <div
-            onClick={() => setTab("sync")}
-            style={{ display:"flex", alignItems:"center", gap:"6px", background:statusColor+"15", border:`1px solid ${statusColor}33`, borderRadius:"20px", padding:"4px 12px", cursor:"pointer" }}>
-            <span style={{ color:statusColor, fontSize:"9px" }} className={syncStatus==="syncing"||syncStatus==="connecting" ? "pulsing" : ""}>{statusIcon}</span>
-            <span style={{ fontSize:"10px", color:statusColor, letterSpacing:"1px", textTransform:"uppercase" }}>
-              {syncStatus === "offline" ? "Local only" : syncStatus === "synced" ? "Cloud synced" : syncStatus === "connecting" ? "Connecting" : syncStatus === "syncing" ? "Saving..." : "Sync error"}
-            </span>
-          </div>
-          <div style={{ fontSize:"11px", color:T.muted }}>{today()}</div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display:"flex", gap:"2px", padding:"12px 24px", background:T.surface, borderBottom:`1px solid ${T.border}`, overflowX:"auto" }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding:"7px 16px", borderRadius:"5px", border:"none", cursor:"pointer",
-            background: tab===t.id ? (t.id==="sync"?T.cyan:T.green)+"22" : "transparent",
-            color: tab===t.id ? (t.id==="sync"?T.cyan:T.green) : T.muted,
-            fontSize:"12px", fontFamily:font, fontWeight:tab===t.id?"700":"400",
-            borderBottom: tab===t.id ? `2px solid ${t.id==="sync"?T.cyan:T.green}` : "2px solid transparent",
-            whiteSpace:"nowrap", transition:"all 0.15s",
-          }}>
-            {t.icon} {t.label}
-            {t.id==="sync" && syncStatus==="error" && <span style={{ marginLeft:"4px", color:T.red }}>!</span>}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div style={{ padding:"24px", maxWidth:"1000px", margin:"0 auto" }}>
-        <div className="fade-in" key={tab}>
-          {tab==="portfolio" && <PortfolioTab portfolio={portfolio} update={upPortfolio} />}
-          {tab==="journal"   && <JournalTab   journal={journal}     update={upJournal}   />}
-          {tab==="valuation" && <ValuationTab />}
-          {tab==="watchlist" && <WatchlistTab watchlist={watchlist} update={upWatchlist} />}
-          {tab==="research"  && <ResearchTab  checks={checks}       update={upChecks}    />}
-          {tab==="thesis"    && <ThesisTab    thesis={thesis}       update={upThesis}    />}
-          {tab==="sync"      && <SyncTab syncConfig={syncConfig} syncStatus={syncStatus} syncMsg={syncMsg} onConnect={activateSyncConfig} onDisconnect={disconnectSync} />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// SYNC TAB — Setup Wizard
-// ══════════════════════════════════════════════════════════
-function SyncTab({ syncConfig, syncStatus, syncMsg, onConnect, onDisconnect }) {
-  const [step, setStep] = useState(syncConfig ? "connected" : 1);
-  const [configText, setConfigText] = useState("");
-  const [syncKey, setSyncKey] = useState(genKey());
-  const [parseError, setParseError] = useState("");
-  const [connecting, setConnecting] = useState(false);
-
-  const parseConfig = () => {
-    try {
-      // Try to extract config object from pasted text
-      let text = configText.trim();
-      // Handle if they pasted the full firebaseConfig = { ... } block
-      const match = text.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})/);
-      if (match) text = match[1];
-      // Handle if they pasted just the object
-      const parsed = JSON.parse(text);
-      if (!parsed.apiKey || !parsed.projectId) {
-        setParseError("Missing apiKey or projectId. Make sure you copied the full config object.");
-        return null;
-      }
-      setParseError("");
-      return parsed;
-    } catch {
-      // Try eval-based parse for non-JSON objects (Firebase config uses no quotes on keys)
-      try {
-        // Extract just the object literal
-        const objMatch = configText.match(/\{[\s\S]*\}/);
-        if (objMatch) {
-          // Convert to valid JSON
-          const jsonStr = objMatch[0]
-            .replace(/\/\/.*/g, '')
-            .replace(/,\s*\}/g, '}')
-            .replace(/(\w+):/g, '"$1":')
-            .replace(/:\s*"([^"]*)"/g, ': "$1"');
-          const parsed = JSON.parse(jsonStr);
-          if (parsed.apiKey && parsed.projectId) { setParseError(""); return parsed; }
-        }
-      } catch {}
-      setParseError("Couldn't parse the config. Try copying just the object { } part.");
-      return null;
-    }
-  };
-
-  const handleConnect = async () => {
-    const cfg = parseConfig();
-    if (!cfg) return;
-    if (!syncKey.trim()) { setParseError("Please enter a sync key."); return; }
-    setConnecting(true);
-    setParseError("");
-    await new Promise(r => setTimeout(r, 500));
-    onConnect({ firebaseConfig: cfg, syncKey: syncKey.trim().toUpperCase() });
-    setConnecting(false);
-    setStep("connected");
-  };
-
-  const statusColor = { offline:T.muted, connecting:T.amber, syncing:T.amber, synced:T.green, error:T.red }[syncStatus];
-
-  if (step === "connected") {
-    return (
-      <div>
-        <Section title="Cloud Sync Status" accent={T.cyan}>
-          <div style={{ background:statusColor+"15", border:`1px solid ${statusColor}33`, borderRadius:"12px", padding:"24px", marginBottom:"20px", textAlign:"center" }}>
-            <div style={{ fontSize:"32px", color:statusColor, marginBottom:"8px", fontWeight:"700" }}>
-              {syncStatus==="synced" ? "✓" : syncStatus==="error" ? "✕" : "◌"}
-            </div>
-            <div style={{ fontSize:"15px", color:statusColor, fontWeight:"700", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"2px" }}>
-              {syncStatus==="synced" ? "All Devices Synced" : syncStatus==="error" ? "Sync Error" : "Connecting..."}
-            </div>
-            {syncMsg && <div style={{ fontSize:"12px", color:T.muted, marginTop:"6px" }}>{syncMsg}</div>}
-          </div>
-
-          <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"16px" }}>
-            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px", letterSpacing:"2px" }}>YOUR SYNC KEY</div>
-            <div style={{ fontSize:"20px", color:T.cyan, fontWeight:"700", letterSpacing:"4px" }}>{syncConfig?.syncKey}</div>
-            <div style={{ fontSize:"11px", color:T.muted, marginTop:"6px" }}>Enter this key on any device to access your data. Keep it secret.</div>
-          </div>
-
-          <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"20px" }}>
-            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>HOW TO ACCESS FROM ANOTHER DEVICE</div>
-            <div style={{ fontSize:"12px", color:T.text, lineHeight:"1.8" }}>
-              <div style={{ marginBottom:"4px" }}>1. Download the <code style={{color:T.green}}>investment-os.html</code> file to the other device</div>
-              <div style={{ marginBottom:"4px" }}>2. Open it in a browser</div>
-              <div style={{ marginBottom:"4px" }}>3. Go to the <span style={{color:T.cyan}}>⟳ Sync</span> tab</div>
-              <div style={{ marginBottom:"4px" }}>4. Click "Already have a key?" and enter: <span style={{color:T.cyan, fontWeight:"700"}}>{syncConfig?.syncKey}</span></div>
-              <div>5. Your data loads automatically ✓</div>
-            </div>
-          </div>
-
-          <Btn onClick={onDisconnect} color={T.red} outline>Disconnect Sync</Btn>
-        </Section>
-      </div>
-    );
+  function activateSync(cfg){
+    ls.set("inv_syncCfg",cfg);
+    setSc(cfg);
+    connectFb(cfg);
+  }
+  function disconnect(){
+    if(fbUnsub){fbUnsub();fbUnsub=null;}
+    ls.set("inv_syncCfg",null);
+    setSc(null);setSs("offline");setSm("");
+    fbDb=null;
+    try{if(firebase.apps.length) firebase.apps.forEach(function(a){a.delete();});}catch(x){}
   }
 
-  // STEP INDICATOR
-  const steps = ["Create Firebase Project", "Copy Config", "Set Sync Key", "Connect"];
+  if(!ld) return e("div",{style:{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.green}},"Loading...");
 
-  return (
-    <div>
-      {/* Already have a key */}
-      <div style={{ background:T.card, border:`1px solid ${T.cyan}33`, borderRadius:"8px", padding:"16px", marginBottom:"24px" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div>
-            <div style={{ fontSize:"12px", color:T.cyan, marginBottom:"4px", fontWeight:"700" }}>Already have a sync key?</div>
-            <div style={{ fontSize:"11px", color:T.muted }}>Skip setup and connect to existing data</div>
-          </div>
-          <Btn onClick={() => setStep("existing")} color={T.cyan} outline small>Connect with key →</Btn>
-        </div>
-      </div>
+  var stC={offline:C.muted,connecting:C.amber,syncing:C.amber,synced:C.green,error:C.red};
+  var stI={offline:"○",connecting:"◌",syncing:"◌",synced:"●",error:"✕"};
+  var stL={offline:"Local only",connecting:"Connecting",syncing:"Saving...",synced:"Cloud synced",error:"Sync error"};
+  var statusColor=stC[ss];
 
-      {/* Step existing key */}
-      {step === "existing" && (
-        <Section title="Connect to Existing Data" accent={T.cyan}>
-          <div style={{ marginBottom:"12px" }}>
-            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px" }}>FIREBASE CONFIG (paste it again)</div>
-            <Textarea value={configText} onChange={setConfigText} placeholder={`Paste your Firebase config here:\n{\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "...",\n  ...\n}`} rows={8} />
-          </div>
-          <div style={{ marginBottom:"16px" }}>
-            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px" }}>YOUR SYNC KEY</div>
-            <Inp value={syncKey} onChange={v => setSyncKey(v.toUpperCase())} placeholder="e.g. ABCD12-EF3456" />
-          </div>
-          {parseError && <div style={{ fontSize:"11px", color:T.red, marginBottom:"12px" }}>{parseError}</div>}
-          <div style={{ display:"flex", gap:"8px" }}>
-            <Btn onClick={handleConnect} color={T.cyan} disabled={connecting}>{connecting ? "Connecting..." : "Connect →"}</Btn>
-            <Btn onClick={() => setStep(1)} color={T.muted} outline small>Back</Btn>
-          </div>
-        </Section>
-      )}
+  return e("div",{style:{background:C.bg,minHeight:"100vh"}},
+    e("div",{style:{borderBottom:"1px solid "+C.border,padding:"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface}},
+      e("div",null,
+        e("div",{style:{fontSize:"11px",color:C.green,letterSpacing:"4px",textTransform:"uppercase"}},"◈ Investment OS"),
+        e("div",{style:{fontSize:"12px",color:C.muted,marginTop:"2px"}},"Personal trading system")
+      ),
+      e("div",{style:{display:"flex",alignItems:"center",gap:"16px"}},
+        e("div",{onClick:function(){setTab("sync");},style:{display:"flex",alignItems:"center",gap:"6px",background:statusColor+"15",border:"1px solid "+statusColor+"33",borderRadius:"20px",padding:"4px 12px",cursor:"pointer"}},
+          e("span",{style:{color:statusColor,fontSize:"9px"},className:ss==="syncing"||ss==="connecting"?"pulse":""},stI[ss]),
+          e("span",{style:{fontSize:"10px",color:statusColor,letterSpacing:"1px",textTransform:"uppercase"}},stL[ss])
+        ),
+        e("div",{style:{fontSize:"11px",color:C.muted}},today())
+      )
+    ),
+    e("div",{style:{display:"flex",gap:"2px",padding:"12px 24px",background:C.surface,borderBottom:"1px solid "+C.border,overflowX:"auto"}},
+      TABS.map(function(t){
+        var active=tab===t.id;
+        var col=t.id==="sync"?C.cyan:C.green;
+        return e("button",{key:t.id,onClick:function(){setTab(t.id);},style:{padding:"7px 16px",borderRadius:"5px",border:"none",cursor:"pointer",background:active?col+"22":"transparent",color:active?col:C.muted,fontSize:"12px",fontWeight:active?"700":"400",borderBottom:active?"2px solid "+col:"2px solid transparent",whiteSpace:"nowrap",transition:"all .15s"}},t.icon+" "+t.label);
+      })
+    ),
+    e("div",{style:{padding:"24px",maxWidth:"1000px",margin:"0 auto"}},
+      tab==="portfolio" && e(PortfolioTab,{portfolio:pf,update:upPf}),
+      tab==="journal"   && e(JournalTab,  {journal:jn,  update:upJn}),
+      tab==="valuation" && e(ValuationTab,null),
+      tab==="watchlist" && e(WatchlistTab,{watchlist:wl, update:upWl}),
+      tab==="research"  && e(ResearchTab, {checks:ck,   update:upCk}),
+      tab==="thesis"    && e(ThesisTab,   {thesis:th,   update:upTh}),
+      tab==="sync"      && e(SyncTab,{syncCfg:sc,syncStatus:ss,syncMsg:sm,onConnect:activateSync,onDisconnect:disconnect})
+    )
+  );
+}
 
-      {step !== "existing" && (
-        <>
-          {/* Step progress */}
-          <div style={{ display:"flex", gap:"8px", marginBottom:"28px" }}>
-            {steps.map((s, i) => (
-              <div key={i} style={{ flex:1, textAlign:"center" }}>
-                <div style={{ height:"3px", background: step>i+1 ? T.cyan : step===i+1 ? T.cyan : T.faint, borderRadius:"2px", marginBottom:"6px", transition:"background 0.3s" }} />
-                <div style={{ fontSize:"9px", color: step===i+1 ? T.cyan : step>i+1 ? T.green : T.muted, letterSpacing:"1px" }}>
-                  {step>i+1 ? "✓ " : ""}{s.toUpperCase()}
-                </div>
-              </div>
-            ))}
-          </div>
+function PortfolioTab(props){
+  var portfolio=props.portfolio, update=props.update;
+  var editing=useState(null), setEditing=editing[1]; editing=editing[0];
+  var nT=useState(""), setNT=nT[1]; nT=nT[0];
+  var nW=useState(""), setNW=nW[1]; nW=nW[0];
+  var total=portfolio.reduce(function(s,p){return s+(parseFloat(p.weight)||0);},0);
+  var COLS=[C.green,C.blue,C.amber,C.purple,C.red,C.cyan];
 
-          {/* STEP 1 */}
-          {step===1 && (
-            <Section title="Step 1 — Create a Free Firebase Project" accent={T.cyan}>
-              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"20px", lineHeight:"1.8" }}>
-                Firebase is Google's free cloud database. Your data is stored there. Setup takes about 5 minutes.
-              </div>
-
-              {[
-                { n:1, text:"Go to", link:"https://console.firebase.google.com", linkText:"console.firebase.google.com", extra:" and sign in with your Google account" },
-                { n:2, text:"Click", code:"Add project", extra:" → give it any name (e.g. 'my-investments') → Continue" },
-                { n:3, text:"Disable Google Analytics if asked (not needed) →", code:"Create project" },
-                { n:4, text:"Click the", code:"</> Web", extra:" icon to add a web app → give it any nickname → click Register app" },
-                { n:5, text:"You'll see a config object — leave this page open for Step 2" },
-                { n:6, text:"In the left sidebar: Build →", code:"Firestore Database", extra:" → Create database → Start in test mode → choose any region → Enable" },
-              ].map((s,i) => (
-                <div key={i} style={{ display:"flex", gap:"14px", padding:"12px 0", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ width:"22px", height:"22px", minWidth:"22px", background:T.cyan+"22", border:`1px solid ${T.cyan}44`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", color:T.cyan, fontWeight:"700" }}>{s.n}</div>
-                  <div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>
-                    {s.text}{" "}
-                    {s.link && <a href={s.link} target="_blank" style={{ color:T.cyan }}>{s.linkText}</a>}
-                    {s.code && <code style={{ background:T.surface, border:`1px solid ${T.border}`, padding:"1px 6px", borderRadius:"3px", color:T.green, fontSize:"11px" }}>{s.code}</code>}
-                    {s.extra}
-                  </div>
-                </div>
-              ))}
-
-              <div style={{ marginTop:"20px" }}>
-                <Btn onClick={() => setStep(2)} color={T.cyan}>I created the project →</Btn>
-              </div>
-            </Section>
-          )}
-
-          {/* STEP 2 */}
-          {step===2 && (
-            <Section title="Step 2 — Paste Your Firebase Config" accent={T.cyan}>
-              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"16px", lineHeight:"1.8" }}>
-                On the Firebase page, find the <code style={{color:T.green, background:T.surface, padding:"1px 5px", borderRadius:"3px"}}>firebaseConfig</code> object. It looks like this:
-              </div>
-              <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"14px", marginBottom:"20px", fontSize:"11px", color:T.muted, lineHeight:"1.8" }}>
-                <span style={{color:T.muted}}>const</span> <span style={{color:T.blue}}>firebaseConfig</span> = {'{'}<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>apiKey:</span> <span style={{color:T.amber}}>"AIzaSy..."</span>,<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>authDomain:</span> <span style={{color:T.amber}}>"your-app.firebaseapp.com"</span>,<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>projectId:</span> <span style={{color:T.amber}}>"your-app"</span>,<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>storageBucket:</span> <span style={{color:T.amber}}>"..."</span>,<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>messagingSenderId:</span> <span style={{color:T.amber}}>"..."</span>,<br/>
-                &nbsp;&nbsp;<span style={{color:T.text}}>appId:</span> <span style={{color:T.amber}}>"..."</span><br/>
-                {'}'}
-              </div>
-              <div style={{ fontSize:"10px", color:T.muted, marginBottom:"6px", letterSpacing:"2px" }}>PASTE YOUR CONFIG BELOW (copy the whole block including {'{ }'})</div>
-              <Textarea value={configText} onChange={setConfigText} placeholder={`Paste here:\n{\n  apiKey: "AIzaSy...",\n  authDomain: "...",\n  projectId: "...",\n  ...\n}`} rows={9} />
-              {parseError && <div style={{ fontSize:"11px", color:T.red, marginTop:"8px" }}>{parseError}</div>}
-              <div style={{ display:"flex", gap:"8px", marginTop:"16px" }}>
-                <Btn onClick={() => { const c = parseConfig(); if(c) setStep(3); }} color={T.cyan}>Verify & Continue →</Btn>
-                <Btn onClick={() => setStep(1)} color={T.muted} outline small>← Back</Btn>
-              </div>
-            </Section>
-          )}
-
-          {/* STEP 3 */}
-          {step===3 && (
-            <Section title="Step 3 — Choose Your Sync Key" accent={T.cyan}>
-              <div style={{ fontSize:"12px", color:T.muted, marginBottom:"16px", lineHeight:"1.8" }}>
-                Your sync key is the password that links all your devices together. Anyone with your key can read your data — keep it private.
-              </div>
-
-              <div style={{ background:T.card, border:`1px solid ${T.cyan}33`, borderRadius:"8px", padding:"20px", marginBottom:"20px", textAlign:"center" }}>
-                <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>YOUR SYNC KEY</div>
-                <div style={{ fontSize:"24px", color:T.cyan, fontWeight:"700", letterSpacing:"6px", marginBottom:"12px" }}>{syncKey}</div>
-                <Inp value={syncKey} onChange={v => setSyncKey(v.toUpperCase().replace(/[^A-Z0-9-]/g, ""))} placeholder="Or type your own key" />
-                <div style={{ marginTop:"10px" }}>
-                  <Btn onClick={() => setSyncKey(genKey())} color={T.muted} small outline>↻ Generate new key</Btn>
-                </div>
-              </div>
-
-              <div style={{ background:T.amberDim, border:`1px solid ${T.amber}44`, borderRadius:"8px", padding:"12px", marginBottom:"20px", fontSize:"11px", color:T.amber, lineHeight:"1.7" }}>
-                ⚠ Write this key down somewhere safe. If you lose it, your cloud data is still there but you won't be able to reconnect to it.
-              </div>
-
-              {parseError && <div style={{ fontSize:"11px", color:T.red, marginBottom:"12px" }}>{parseError}</div>}
-
-              <div style={{ display:"flex", gap:"8px" }}>
-                <Btn onClick={handleConnect} color={T.cyan} disabled={connecting}>{connecting ? "Connecting..." : "Connect & Sync →"}</Btn>
-                <Btn onClick={() => setStep(2)} color={T.muted} outline small>← Back</Btn>
-              </div>
-            </Section>
-          )}
-
-          {/* Firestore rules reminder */}
-          <Section title="Important: Update Firestore Rules" accent={T.amber}>
-            <div style={{ fontSize:"12px", color:T.muted, lineHeight:"1.8", marginBottom:"14px" }}>
-              Firebase test mode expires after 30 days. To keep it working permanently, update your Firestore Security Rules:
-            </div>
-            <div style={{ background:"#0a0f0a", border:`1px solid ${T.green}33`, borderRadius:"8px", padding:"16px", marginBottom:"14px", fontFamily:font }}>
-              <div style={{ fontSize:"11px", color:T.muted, marginBottom:"8px" }}>In Firebase Console → Firestore → Rules → paste this:</div>
-              <pre style={{ fontSize:"11px", color:T.green, lineHeight:"1.7", whiteSpace:"pre-wrap" }}>{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /investmentOS/{syncKey} {
-      allow read, write: if true;
-    }
+  function updF(i,field,val){var p=portfolio.slice();p[i]=Object.assign({},p[i]);p[i][field]=val;update(p);}
+  function addPos(){
+    if(!nT||!nW) return;
+    update(portfolio.concat([{ticker:nT.toUpperCase(),weight:parseFloat(nW),fairValue:null,buyZone:null,stopLoss:null,thesis:"",type:"stock"}]));
+    setNT("");setNW("");
   }
-}`}</pre>
-            </div>
-            <div style={{ fontSize:"11px", color:T.muted }}>This keeps your data accessible to anyone who knows your sync key.</div>
-          </Section>
-        </>
-      )}
-    </div>
+
+  return e("div",null,
+    e(Section,{title:"Current Allocation",accent:C.green},
+      e("div",{style:{marginBottom:"20px"}},
+        e("div",{style:{display:"flex",height:"8px",borderRadius:"4px",overflow:"hidden",marginBottom:"8px"}},
+          portfolio.filter(function(p){return p.ticker!=="CASH";}).map(function(p,i){
+            return e("div",{key:i,style:{width:p.weight+"%",background:COLS[i%COLS.length],opacity:.8},title:p.ticker+": "+p.weight+"%"});
+          })
+        ),
+        e("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap"}},
+          portfolio.map(function(p,i){return e("span",{key:i,style:{fontSize:"10px",color:COLS[i%COLS.length],letterSpacing:"1px"}},"■ "+p.ticker+" "+p.weight+"%");})
+        )
+      ),
+      e("div",{style:{padding:"8px 14px",borderRadius:"6px",marginBottom:"16px",background:Math.abs(total-100)<.5?"#00ff8840":"#ffb34720",border:"1px solid "+(Math.abs(total-100)<.5?C.green:C.amber)+"44",fontSize:"12px",color:Math.abs(total-100)<.5?C.green:C.amber}},
+        "Total: "+total.toFixed(1)+"% "+(Math.abs(total-100)<.5?"✓ Balanced":"⚠ Adjust to 100%")
+      ),
+      portfolio.map(function(pos,i){
+        return e(Card,{key:i},
+          editing===i
+          ? e("div",null,
+              e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"8px"}},
+                [["WEIGHT %","weight"],["FAIR VALUE","fairValue"],["BUY ZONE","buyZone"],["STOP LOSS","stopLoss"]].map(function(pair){
+                  return e("div",{key:pair[1]},
+                    e(Label,{text:pair[0]}),
+                    e(Inp,{value:pos[pair[1]]||"",onChange:function(v){updF(i,pair[1],pair[1]==="weight"?parseFloat(v)||0:parseFloat(v)||null);},type:"number",placeholder:"$"})
+                  );
+                })
+              ),
+              e("div",{style:{marginBottom:"8px"}},
+                e(Label,{text:"THESIS"}),
+                e(TA,{value:pos.thesis,onChange:function(v){updF(i,"thesis",v);},placeholder:"Why do you own this?",rows:2})
+              ),
+              e("div",{style:{display:"flex",gap:"8px"}},
+                e(Btn,{onClick:function(){setEditing(null);},color:C.green,small:true},"Save"),
+                e(Btn,{onClick:function(){update(portfolio.filter(function(_,idx){return idx!==i;}));setEditing(null);},color:C.red,small:true,outline:true},"Remove")
+              )
+            )
+          : e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+              e("div",{style:{flex:1}},
+                e("div",{style:{display:"flex",gap:"10px",alignItems:"center",marginBottom:"6px"}},
+                  e("span",{style:{fontSize:"15px",fontWeight:"700",color:C.text}},pos.ticker),
+                  e(Badge,{color:pos.weight/100>.4?C.amber:pos.weight/100>.2?C.blue:C.green},pos.weight+"%"),
+                  e(Badge,{color:C.muted,small:true},pos.type.toUpperCase())
+                ),
+                pos.thesis&&e("div",{style:{fontSize:"11px",color:C.muted,lineHeight:"1.6",maxWidth:"600px"}},pos.thesis.substring(0,120)+(pos.thesis.length>120?"...":"")),
+                e("div",{style:{display:"flex",gap:"16px",marginTop:"8px",flexWrap:"wrap"}},
+                  pos.fairValue&&e("span",{key:"fv",style:{fontSize:"11px",color:C.blue}},"Target: "+fmt(pos.fairValue)),
+                  pos.buyZone  &&e("span",{key:"bz",style:{fontSize:"11px",color:C.green}},"Buy: "+fmt(pos.buyZone)),
+                  pos.stopLoss &&e("span",{key:"sl",style:{fontSize:"11px",color:C.red}},"Stop: "+fmt(pos.stopLoss)),
+                  e("span",{key:"val",style:{fontSize:"11px",color:C.muted}},"≈ "+fmt(40000*pos.weight/100))
+                )
+              ),
+              e(Btn,{onClick:function(){setEditing(i);},color:C.blue,small:true,outline:true},"Edit")
+            )
+        );
+      }),
+      e("div",{style:{background:C.card,border:"1px dashed "+C.border,borderRadius:"8px",padding:"16px",marginTop:"12px"}},
+        e(Label,{text:"ADD POSITION"}),
+        e("div",{style:{display:"flex",gap:"8px",marginTop:"8px"}},
+          e(Inp,{value:nT,onChange:function(v){setNT(v.toUpperCase());},placeholder:"TICKER",extraStyle:{width:"100px"}}),
+          e(Inp,{value:nW,onChange:setNW,placeholder:"Weight %",type:"number",extraStyle:{width:"100px"}}),
+          e(Btn,{onClick:addPos,color:C.green},"Add")
+        )
+      )
+    )
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// TAB 1: PORTFOLIO
-// ══════════════════════════════════════════════════════════
-function PortfolioTab({ portfolio, update }) {
-  const [editing, setEditing] = useState(null);
-  const [newTicker, setNewTicker] = useState("");
-  const [newWeight, setNewWeight] = useState("");
-  const total = portfolio.reduce((s,p) => s+(parseFloat(p.weight)||0), 0);
-  const colors = [T.green, T.blue, T.amber, T.purple, T.red, T.cyan];
-  const wColor = (w) => w/100>0.4 ? T.amber : w/100>0.2 ? T.blue : T.green;
+function JournalTab(props){
+  var journal=props.journal, update=props.update;
+  var empty={date:today(),ticker:"",action:"BUY",price:"",shares:"",thesis:"",whatCouldGoWrong:"",target:"",timeline:"",sentiment:"NEUTRAL"};
+  var form=useState(empty), setForm=form[1]; form=form[0];
+  var expanded=useState(null), setExpanded=expanded[1]; expanded=expanded[0];
+  var aColor=function(a){return a==="BUY"?C.green:a==="SELL"?C.red:C.amber;};
+  var sColor=function(s){return s==="BULLISH"?C.green:s==="BEARISH"?C.red:C.muted;};
+  var selStyle=function(col){return {background:C.surface,border:"1px solid "+C.border,color:col,padding:"8px 12px",borderRadius:"6px",fontSize:"12px",width:"100%",outline:"none"};};
 
-  const add = () => {
-    if (!newTicker || !newWeight) return;
-    update([...portfolio, { ticker:newTicker.toUpperCase(), weight:parseFloat(newWeight), fairValue:null, buyZone:null, thesis:"", stopLoss:null, type:"stock" }]);
-    setNewTicker(""); setNewWeight("");
-  };
-  const upF = (i,f,v) => { const p=[...portfolio]; p[i]={...p[i],[f]:v}; update(p); };
+  function addEntry(){
+    if(!form.ticker||!form.price) return;
+    update([Object.assign({},form,{id:Date.now()})].concat(journal));
+    setForm(empty);
+  }
 
-  return (
-    <div>
-      <Section title="Current Allocation" accent={T.green}>
-        <div style={{ marginBottom:"20px" }}>
-          <div style={{ display:"flex", height:"8px", borderRadius:"4px", overflow:"hidden", marginBottom:"8px" }}>
-            {portfolio.filter(p=>p.ticker!=="CASH").map((p,i)=>(
-              <div key={i} style={{ width:`${p.weight}%`, background:colors[i%colors.length], opacity:0.8 }} title={`${p.ticker}: ${p.weight}%`} />
-            ))}
-          </div>
-          <div style={{ display:"flex", gap:"16px", flexWrap:"wrap" }}>
-            {portfolio.map((p,i)=>(
-              <span key={i} style={{ fontSize:"10px", color:colors[i%colors.length], letterSpacing:"1px" }}>■ {p.ticker} {p.weight}%</span>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ padding:"8px 14px", borderRadius:"6px", marginBottom:"16px", background: Math.abs(total-100)<0.5?T.greenDim:T.amberDim, border:`1px solid ${Math.abs(total-100)<0.5?T.green:T.amber}44`, fontSize:"12px", color:Math.abs(total-100)<0.5?T.green:T.amber }}>
-          Total: {total.toFixed(1)}% {Math.abs(total-100)<0.5 ? "✓ Balanced" : "⚠ Adjust to 100%"}
-        </div>
-
-        {portfolio.map((pos,i) => (
-          <div key={i} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"16px", marginBottom:"8px" }}>
-            {editing===i ? (
-              <div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"8px", marginBottom:"8px" }}>
-                  {[["WEIGHT %","weight","number"],["FAIR VALUE","fairValue","number"],["BUY ZONE","buyZone","number"],["STOP LOSS","stopLoss","number"]].map(([l,f,t])=>(
-                    <div key={f}><div style={{fontSize:"10px",color:T.muted,marginBottom:"4px"}}>{l}</div>
-                    <Inp value={pos[f]||""} onChange={v=>upF(i,f,f==="weight"?parseFloat(v)||0:parseFloat(v)||null)} type={t} placeholder="$" /></div>
-                  ))}
-                </div>
-                <div style={{ marginBottom:"8px" }}>
-                  <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>THESIS</div>
-                  <Textarea value={pos.thesis} onChange={v=>upF(i,"thesis",v)} rows={2} placeholder="Why do you own this?" />
-                </div>
-                <div style={{ display:"flex", gap:"8px" }}>
-                  <Btn onClick={()=>setEditing(null)} color={T.green} small>Save</Btn>
-                  <Btn onClick={()=>{ update(portfolio.filter((_,idx)=>idx!==i)); setEditing(null); }} color={T.red} small outline>Remove</Btn>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:"flex", gap:"10px", alignItems:"center", marginBottom:"6px" }}>
-                    <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{pos.ticker}</span>
-                    <Badge color={wColor(pos.weight)}>{pos.weight}%</Badge>
-                    <Badge color={T.muted} small>{pos.type.toUpperCase()}</Badge>
-                  </div>
-                  {pos.thesis && <div style={{ fontSize:"11px", color:T.muted, lineHeight:"1.6", maxWidth:"600px" }}>{pos.thesis.substring(0,120)}{pos.thesis.length>120?"...":""}</div>}
-                  <div style={{ display:"flex", gap:"16px", marginTop:"8px" }}>
-                    {pos.fairValue && <span style={{ fontSize:"11px", color:T.blue }}>Target: {fmt(pos.fairValue)}</span>}
-                    {pos.buyZone   && <span style={{ fontSize:"11px", color:T.green }}>Buy: {fmt(pos.buyZone)}</span>}
-                    {pos.stopLoss  && <span style={{ fontSize:"11px", color:T.red }}>Stop: {fmt(pos.stopLoss)}</span>}
-                    <span style={{ fontSize:"11px", color:T.muted }}>≈ {fmt(40000*pos.weight/100)}</span>
-                  </div>
-                </div>
-                <Btn onClick={()=>setEditing(i)} color={T.blue} small outline>Edit</Btn>
-              </div>
-            )}
-          </div>
-        ))}
-
-        <div style={{ background:T.card, border:`1px dashed ${T.border}`, borderRadius:"8px", padding:"16px", marginTop:"12px" }}>
-          <div style={{ fontSize:"11px", color:T.muted, marginBottom:"10px", letterSpacing:"2px" }}>ADD POSITION</div>
-          <div style={{ display:"flex", gap:"8px" }}>
-            <Inp value={newTicker} onChange={setNewTicker} placeholder="TICKER" style={{ width:"100px" }} />
-            <Inp value={newWeight} onChange={setNewWeight} placeholder="Weight %" type="number" style={{ width:"100px" }} />
-            <Btn onClick={add} color={T.green}>Add</Btn>
-          </div>
-        </div>
-      </Section>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// TAB 2: JOURNAL
-// ══════════════════════════════════════════════════════════
-function JournalTab({ journal, update }) {
-  const emptyForm = { date:today(), ticker:"", action:"BUY", price:"", shares:"", thesis:"", whatCouldGoWrong:"", target:"", timeline:"", sentiment:"NEUTRAL" };
-  const [form, setForm] = useState(emptyForm);
-  const [expanded, setExpanded] = useState(null);
-  const aColor = (a) => a==="BUY"?T.green:a==="SELL"?T.red:T.amber;
-  const sColor = (s) => s==="BULLISH"?T.green:s==="BEARISH"?T.red:T.muted;
-
-  const add = () => {
-    if (!form.ticker || !form.price) return;
-    update([{ ...form, id:Date.now() }, ...journal]);
-    setForm(emptyForm);
-  };
-
-  return (
-    <div>
-      <Section title="New Journal Entry" accent={T.blue}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>DATE</div><Inp value={form.date} onChange={v=>setForm(f=>({...f,date:v}))} type="date" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={form.ticker} onChange={v=>setForm(f=>({...f,ticker:v.toUpperCase()}))} placeholder="e.g. AMZN" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>ACTION</div>
-            <select value={form.action} onChange={e=>setForm(f=>({...f,action:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:aColor(form.action), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
-              <option value="BUY">BUY</option><option value="SELL">SELL</option><option value="HOLD">HOLD / NOTE</option>
-            </select>
-          </div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>PRICE</div><Inp value={form.price} onChange={v=>setForm(f=>({...f,price:v}))} placeholder="$" type="number" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>SHARES</div><Inp value={form.shares} onChange={v=>setForm(f=>({...f,shares:v}))} placeholder="qty" type="number" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>SENTIMENT</div>
-            <select value={form.sentiment} onChange={e=>setForm(f=>({...f,sentiment:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:sColor(form.sentiment), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
-              <option value="BULLISH">BULLISH</option><option value="NEUTRAL">NEUTRAL</option><option value="BEARISH">BEARISH</option>
-            </select>
-          </div>
-        </div>
-        <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>THESIS</div><Textarea value={form.thesis} onChange={v=>setForm(f=>({...f,thesis:v}))} placeholder="Why are you doing this? Be specific." rows={3} /></div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>WHAT COULD MAKE ME WRONG?</div><Textarea value={form.whatCouldGoWrong} onChange={v=>setForm(f=>({...f,whatCouldGoWrong:v}))} rows={2} placeholder="Risks, bear case..." /></div>
-          <div>
-            <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TARGET & TIMELINE</div>
-            <Inp value={form.target} onChange={v=>setForm(f=>({...f,target:v}))} placeholder="e.g. $360 in 12-18 months" style={{ marginBottom:"8px" }} />
-            <Inp value={form.timeline} onChange={v=>setForm(f=>({...f,timeline:v}))} placeholder="Exit condition" />
-          </div>
-        </div>
-        <Btn onClick={add} color={T.blue}>Log Entry →</Btn>
-      </Section>
-
-      <Section title={`Journal Log (${journal.length} entries)`} accent={T.purple}>
-        {journal.length===0 ? (
-          <div style={{ textAlign:"center", padding:"40px", color:T.muted, fontSize:"12px" }}>No entries yet. Log your first trade above.</div>
-        ) : journal.map((e,i) => (
-          <div key={e.id} style={{ background:T.card, border:`1px solid ${T.border}`, borderLeft:`3px solid ${aColor(e.action)}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }} onClick={()=>setExpanded(expanded===i?null:i)}>
-              <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
-                <Badge color={aColor(e.action)} small>{e.action}</Badge>
-                <span style={{ fontSize:"14px", fontWeight:"700", color:T.text }}>{e.ticker}</span>
-                {e.price && <span style={{ fontSize:"12px", color:T.muted }}>@ {fmt(e.price)}</span>}
-                {e.shares && <span style={{ fontSize:"12px", color:T.muted }}>× {e.shares}</span>}
-              </div>
-              <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
-                <Badge color={sColor(e.sentiment)} small>{e.sentiment}</Badge>
-                <span style={{ fontSize:"11px", color:T.muted }}>{e.date}</span>
-                <Btn onClick={ev=>{ev.stopPropagation();update(journal.filter(j=>j.id!==e.id));}} color={T.red} small outline>×</Btn>
-                <span style={{ fontSize:"11px", color:T.muted }}>{expanded===i?"▲":"▼"}</span>
-              </div>
-            </div>
-            {expanded===i && (
-              <div style={{ marginTop:"14px", paddingTop:"14px", borderTop:`1px solid ${T.border}` }}>
-                {e.thesis && <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.green, letterSpacing:"2px", marginBottom:"4px" }}>THESIS</div><div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>{e.thesis}</div></div>}
-                {e.whatCouldGoWrong && <div style={{ marginBottom:"10px" }}><div style={{ fontSize:"10px", color:T.red, letterSpacing:"2px", marginBottom:"4px" }}>RISKS</div><div style={{ fontSize:"12px", color:T.text, lineHeight:"1.7" }}>{e.whatCouldGoWrong}</div></div>}
-                {(e.target||e.timeline) && <div><div style={{ fontSize:"10px", color:T.blue, letterSpacing:"2px", marginBottom:"4px" }}>TARGET & TIMELINE</div><div style={{ fontSize:"12px", color:T.text }}>{e.target} — {e.timeline}</div></div>}
-              </div>
-            )}
-          </div>
-        ))}
-      </Section>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// TAB 3: VALUATION
-// ══════════════════════════════════════════════════════════
-function ValuationTab() {
-  const [f, setF] = useState({ ticker:"", eps:"", peLow:"", peMid:"", peHigh:"", current:"" });
-  const [notes, setNotes] = useState("");
-  const [res, setRes] = useState(null);
-
-  const calc = () => {
-    const e=parseFloat(f.eps), lo=parseFloat(f.peLow), mid=parseFloat(f.peMid), hi=parseFloat(f.peHigh), cur=parseFloat(f.current);
-    if (!e||!lo||!mid||!hi) return;
-    const cons=e*lo, base=e*mid, bull=e*hi, bz=(base/1.3).toFixed(0);
-    const up=cur ? (((base-cur)/cur)*100).toFixed(1) : null;
-    const v=cur ? cur<bz?"STRONG BUY — Below buy zone":cur<base?"BUY — Below fair value":cur<bull?"FAIR — At or near fair value":"EXPENSIVE — Above fair value" : "Enter current price for verdict";
-    const vc=cur ? cur<bz?T.green:cur<base?T.green:cur<bull?T.amber:T.red : T.muted;
-    setRes({ cons, base, bull, bz, up, v, vc });
-    setNotes(`Buy ${f.ticker} at ${fmt(bz)} or below. Target ${fmt(base.toFixed(0))} in 12-18 months.`);
-  };
-
-  return (
-    <div>
-      <Section title="Valuation Calculator" accent={T.amber}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px", marginBottom:"16px" }}>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={f.ticker} onChange={v=>setF(x=>({...x,ticker:v.toUpperCase()}))} placeholder="e.g. NVDA" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>CURRENT PRICE</div><Inp value={f.current} onChange={v=>setF(x=>({...x,current:v}))} placeholder="$" type="number" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>FORWARD EPS</div><Inp value={f.eps} onChange={v=>setF(x=>({...x,eps:v}))} placeholder="e.g. 6.00" type="number" /></div>
-        </div>
-        <div style={{ fontSize:"10px", color:T.muted, marginBottom:"8px", letterSpacing:"2px" }}>P/E RANGE (from Macrotrends historical)</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
-          {[["CONSERVATIVE",T.red,"peLow"],["BASE CASE",T.amber,"peMid"],["BULL CASE",T.green,"peHigh"]].map(([l,c,k])=>(
-            <div key={k}><div style={{ fontSize:"10px", color:c, marginBottom:"4px" }}>{l}</div><Inp value={f[k]} onChange={v=>setF(x=>({...x,[k]:v}))} placeholder="e.g. 35" type="number" /></div>
-          ))}
-        </div>
-        <Btn onClick={calc} color={T.amber}>Calculate →</Btn>
-      </Section>
-
-      {res && (
-        <Section title="Results" accent={res.vc}>
-          <div style={{ background:res.vc+"15", border:`1px solid ${res.vc}44`, borderRadius:"8px", padding:"16px", marginBottom:"16px", textAlign:"center" }}>
-            <div style={{ fontSize:"11px", color:res.vc, letterSpacing:"3px", marginBottom:"6px" }}>VERDICT</div>
-            <div style={{ fontSize:"16px", fontWeight:"700", color:res.vc }}>{res.v}</div>
-            {res.up && <div style={{ fontSize:"13px", color:T.muted, marginTop:"6px" }}>{res.up>0?"+":""}{res.up}% to fair value</div>}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
-            {[["CONSERVATIVE",fmt(res.cons.toFixed(0)),T.red],["FAIR VALUE",fmt(res.base.toFixed(0)),T.amber],["BULL CASE",fmt(res.bull.toFixed(0)),T.green],["BUY ZONE",fmt(res.bz),T.blue]].map(([l,v,c])=>(
-              <div key={l} style={{ background:T.card, border:`1px solid ${c}33`, borderTop:`3px solid ${c}`, borderRadius:"8px", padding:"14px", textAlign:"center" }}>
-                <div style={{ fontSize:"10px", color:c, letterSpacing:"1px", marginBottom:"6px" }}>{l}</div>
-                <div style={{ fontSize:"18px", fontWeight:"700", color:c }}>{v}</div>
-                {l==="BUY ZONE" && <div style={{ fontSize:"10px", color:T.muted, marginTop:"4px" }}>30% margin of safety</div>}
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px", letterSpacing:"2px" }}>BUY/SELL PLAN</div>
-          <Textarea value={notes} onChange={setNotes} rows={2} />
-        </Section>
-      )}
-
-      <Section title="How to Use" accent={T.muted}>
-        <div style={{ fontSize:"12px", color:T.muted, lineHeight:"1.9" }}>
-          {[["Step 1","Yahoo Finance → Analysis tab → EPS Estimates (next year) = Forward EPS"],["Step 2","Macrotrends.net → search ticker → P/E ratio → note the 3yr low, avg, high"],["Step 3","Enter all 3 values, hit Calculate"],["Rule","Never buy above your base fair value without exceptional reason"],].map(([l,t])=>(
-            <div key={l} style={{ marginBottom:"6px" }}><span style={{ color:T.blue }}>{l}:</span> {t}</div>
-          ))}
-        </div>
-      </Section>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// TAB 4: WATCHLIST
-// ══════════════════════════════════════════════════════════
-function WatchlistTab({ watchlist, update }) {
-  const [form, setForm] = useState({ ticker:"", fairValue:"", buyZone:"", currentPrice:"", notes:"", status:"WATCH" });
-  const sc = (s) => ({BUY:T.green,WAIT:T.amber,WATCH:T.blue,AVOID:T.red})[s]||T.muted;
-
-  const add = () => {
-    if (!form.ticker) return;
-    const up = form.fairValue&&form.currentPrice ? (((form.fairValue-form.currentPrice)/form.currentPrice)*100).toFixed(1) : null;
-    update([{ ...form, upside:up, id:Date.now() }, ...watchlist]);
-    setForm({ ticker:"", fairValue:"", buyZone:"", currentPrice:"", notes:"", status:"WATCH" });
-  };
-
-  return (
-    <div>
-      <Section title="Add to Watchlist" accent={T.blue}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>TICKER</div><Inp value={form.ticker} onChange={v=>setForm(f=>({...f,ticker:v.toUpperCase()}))} placeholder="e.g. LLY" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>CURRENT PRICE</div><Inp value={form.currentPrice} onChange={v=>setForm(f=>({...f,currentPrice:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>FAIR VALUE</div><Inp value={form.fairValue} onChange={v=>setForm(f=>({...f,fairValue:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>BUY ZONE</div><Inp value={form.buyZone} onChange={v=>setForm(f=>({...f,buyZone:parseFloat(v)||""}))} placeholder="$" type="number" /></div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"3fr 1fr", gap:"10px", marginBottom:"10px" }}>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>NOTES</div><Inp value={form.notes} onChange={v=>setForm(f=>({...f,notes:v}))} placeholder="Why is this interesting?" /></div>
-          <div><div style={{ fontSize:"10px", color:T.muted, marginBottom:"4px" }}>STATUS</div>
-            <select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={{ background:T.surface, border:`1px solid ${T.border}`, color:sc(form.status), padding:"8px 12px", borderRadius:"6px", fontSize:"12px", fontFamily:font, width:"100%", outline:"none" }}>
-              <option value="BUY">BUY</option><option value="WATCH">WATCH</option><option value="WAIT">WAIT FOR ENTRY</option><option value="AVOID">AVOID</option>
-            </select>
-          </div>
-        </div>
-        <Btn onClick={add} color={T.blue}>Add to Watchlist →</Btn>
-      </Section>
-
-      <Section title={`Watchlist (${watchlist.length})`} accent={T.purple}>
-        {watchlist.length===0 ? <div style={{ textAlign:"center", padding:"40px", color:T.muted, fontSize:"12px" }}>Watchlist is empty.</div>
-        : watchlist.map((w,i) => {
-          const inBuy = w.currentPrice&&w.buyZone&&w.currentPrice<=w.buyZone;
-          return (
-            <div key={w.id||i} style={{ background:T.card, border:`1px solid ${inBuy?T.green+"66":T.border}`, borderLeft:`3px solid ${sc(w.status)}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:"flex", gap:"10px", alignItems:"center", marginBottom:"6px" }}>
-                    <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{w.ticker}</span>
-                    <Badge color={sc(w.status)}>{w.status}</Badge>
-                    {inBuy && <Badge color={T.green}>IN BUY ZONE</Badge>}
-                    {w.upside && <span style={{ fontSize:"12px", color:w.upside>0?T.green:T.red }}>{w.upside>0?"+":""}{w.upside}% upside</span>}
-                  </div>
-                  <div style={{ display:"flex", gap:"16px", marginBottom:"6px" }}>
-                    {w.currentPrice && <span style={{ fontSize:"11px", color:T.muted }}>Now: {fmt(w.currentPrice)}</span>}
-                    {w.fairValue    && <span style={{ fontSize:"11px", color:T.amber }}>Fair: {fmt(w.fairValue)}</span>}
-                    {w.buyZone      && <span style={{ fontSize:"11px", color:T.green }}>Buy zone: {fmt(w.buyZone)}</span>}
-                  </div>
-                  {w.notes && <div style={{ fontSize:"11px", color:T.muted, lineHeight:"1.6" }}>{w.notes}</div>}
-                </div>
-                <Btn onClick={()=>update(watchlist.filter((_,idx)=>idx!==i))} color={T.red} small outline>×</Btn>
-              </div>
-            </div>
+  return e("div",null,
+    e(Section,{title:"New Journal Entry",accent:C.blue},
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginBottom:"10px"}},
+        e("div",null,e(Label,{text:"DATE"}),e(Inp,{value:form.date,onChange:function(v){setForm(function(f){return Object.assign({},f,{date:v});});},type:"date"})),
+        e("div",null,e(Label,{text:"TICKER"}),e(Inp,{value:form.ticker,onChange:function(v){setForm(function(f){return Object.assign({},f,{ticker:v.toUpperCase()});});},placeholder:"e.g. AMZN"})),
+        e("div",null,e(Label,{text:"ACTION"}),e("select",{value:form.action,onChange:function(ev){setForm(function(f){return Object.assign({},f,{action:ev.target.value});});},style:selStyle(aColor(form.action))},["BUY","SELL","HOLD"].map(function(a){return e("option",{key:a,value:a},a);}))),
+        e("div",null,e(Label,{text:"PRICE"}),e(Inp,{value:form.price,onChange:function(v){setForm(function(f){return Object.assign({},f,{price:v});});},placeholder:"$",type:"number"})),
+        e("div",null,e(Label,{text:"SHARES"}),e(Inp,{value:form.shares,onChange:function(v){setForm(function(f){return Object.assign({},f,{shares:v});});},placeholder:"qty",type:"number"})),
+        e("div",null,e(Label,{text:"SENTIMENT"}),e("select",{value:form.sentiment,onChange:function(ev){setForm(function(f){return Object.assign({},f,{sentiment:ev.target.value});});},style:selStyle(sColor(form.sentiment))},["BULLISH","NEUTRAL","BEARISH"].map(function(s){return e("option",{key:s,value:s},s);})))
+      ),
+      e("div",{style:{marginBottom:"10px"}},e(Label,{text:"THESIS"}),e(TA,{value:form.thesis,onChange:function(v){setForm(function(f){return Object.assign({},f,{thesis:v});});},placeholder:"Why are you doing this? Be specific.",rows:3})),
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}},
+        e("div",null,e(Label,{text:"WHAT COULD MAKE ME WRONG?"}),e(TA,{value:form.whatCouldGoWrong,onChange:function(v){setForm(function(f){return Object.assign({},f,{whatCouldGoWrong:v});});},placeholder:"Risks, bear case...",rows:2})),
+        e("div",null,
+          e(Label,{text:"TARGET & TIMELINE"}),
+          e(Inp,{value:form.target,onChange:function(v){setForm(function(f){return Object.assign({},f,{target:v});});},placeholder:"e.g. $360 in 12-18 months",extraStyle:{marginBottom:"8px"}}),
+          e(Inp,{value:form.timeline,onChange:function(v){setForm(function(f){return Object.assign({},f,{timeline:v});});},placeholder:"Exit condition"})
+        )
+      ),
+      e(Btn,{onClick:addEntry,color:C.blue},"Log Entry →")
+    ),
+    e(Section,{title:"Journal Log ("+journal.length+" entries)",accent:C.purple},
+      journal.length===0
+      ? e("div",{style:{textAlign:"center",padding:"40px",color:C.muted,fontSize:"12px"}},"No entries yet.")
+      : journal.map(function(entry,i){
+          return e("div",{key:entry.id,style:{background:C.card,border:"1px solid "+C.border,borderLeft:"3px solid "+aColor(entry.action),borderRadius:"8px",padding:"14px",marginBottom:"8px"}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"},onClick:function(){setExpanded(expanded===i?null:i);}},
+              e("div",{style:{display:"flex",gap:"10px",alignItems:"center"}},
+                e(Badge,{color:aColor(entry.action),small:true},entry.action),
+                e("span",{style:{fontSize:"14px",fontWeight:"700",color:C.text}},entry.ticker),
+                entry.price&&e("span",{style:{fontSize:"12px",color:C.muted}},"@ "+fmt(entry.price))
+              ),
+              e("div",{style:{display:"flex",gap:"8px",alignItems:"center"}},
+                e(Badge,{color:sColor(entry.sentiment),small:true},entry.sentiment),
+                e("span",{style:{fontSize:"11px",color:C.muted}},entry.date),
+                e(Btn,{onClick:function(ev){ev.stopPropagation();update(journal.filter(function(j){return j.id!==entry.id;}));},color:C.red,small:true,outline:true},"×"),
+                e("span",{style:{fontSize:"11px",color:C.muted}},expanded===i?"▲":"▼")
+              )
+            ),
+            expanded===i&&e("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid "+C.border}},
+              entry.thesis&&e("div",{style:{marginBottom:"10px"}},e(Label,{text:"THESIS",color:C.green}),e("div",{style:{fontSize:"12px",color:C.text,lineHeight:"1.7"}},entry.thesis)),
+              entry.whatCouldGoWrong&&e("div",{style:{marginBottom:"10px"}},e(Label,{text:"RISKS",color:C.red}),e("div",{style:{fontSize:"12px",color:C.text,lineHeight:"1.7"}},entry.whatCouldGoWrong)),
+              (entry.target||entry.timeline)&&e("div",null,e(Label,{text:"TARGET & TIMELINE",color:C.blue}),e("div",{style:{fontSize:"12px",color:C.text}},entry.target+" — "+entry.timeline))
+            )
           );
-        })}
-      </Section>
-    </div>
+        })
+    )
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// TAB 5: RESEARCH CHECKLIST
-// ══════════════════════════════════════════════════════════
-const CL = {
-  daily:     { label:"Daily (10 min)",    color:T.green, items:[
+function ValuationTab(){
+  var fState=useState({ticker:"",eps:"",peLow:"",peMid:"",peHigh:"",current:""}), setF=fState[1]; var f=fState[0];
+  var notesState=useState(""), setNotes=notesState[1]; var notes=notesState[0];
+  var resState=useState(null), setRes=resState[1]; var res=resState[0];
+
+  function calc(){
+    var ep=parseFloat(f.eps),lo=parseFloat(f.peLow),mid=parseFloat(f.peMid),hi=parseFloat(f.peHigh),cur=parseFloat(f.current);
+    if(!ep||!lo||!mid||!hi) return;
+    var cons=ep*lo,base=ep*mid,bull=ep*hi,bz=Math.round(base/1.3);
+    var up=cur?(((base-cur)/cur)*100).toFixed(1):null;
+    var vrd=cur?(cur<bz?"STRONG BUY — Below buy zone":cur<base?"BUY — Below fair value":cur<bull?"FAIR — At or near fair value":"EXPENSIVE — Above fair value"):"Enter current price for verdict";
+    var vc=cur?(cur<bz?C.green:cur<base?C.green:cur<bull?C.amber:C.red):C.muted;
+    setRes({cons:cons,base:base,bull:bull,bz:bz,up:up,vrd:vrd,vc:vc});
+    setNotes("Buy "+f.ticker+" at "+fmt(bz)+" or below. Target "+fmt(Math.round(base))+" in 12-18 months.");
+  }
+
+  return e("div",null,
+    e(Section,{title:"Valuation Calculator",accent:C.amber},
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"16px"}},
+        e("div",null,e(Label,{text:"TICKER"}),e(Inp,{value:f.ticker,onChange:function(v){setF(function(x){return Object.assign({},x,{ticker:v.toUpperCase()});});},placeholder:"e.g. NVDA"})),
+        e("div",null,e(Label,{text:"CURRENT PRICE"}),e(Inp,{value:f.current,onChange:function(v){setF(function(x){return Object.assign({},x,{current:v});});},placeholder:"$",type:"number"})),
+        e("div",null,e(Label,{text:"FORWARD EPS"}),e(Inp,{value:f.eps,onChange:function(v){setF(function(x){return Object.assign({},x,{eps:v});});},placeholder:"e.g. 6.00",type:"number"}))
+      ),
+      e("div",{style:{fontSize:"10px",color:C.muted,margin:"0 0 8px",letterSpacing:"2px"}},"P/E RANGE (from Macrotrends)"),
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginBottom:"16px"}},
+        e("div",null,e(Label,{text:"CONSERVATIVE",color:C.red}),  e(Inp,{value:f.peLow, onChange:function(v){setF(function(x){return Object.assign({},x,{peLow:v});});}, placeholder:"e.g. 30",type:"number"})),
+        e("div",null,e(Label,{text:"BASE CASE",   color:C.amber}), e(Inp,{value:f.peMid, onChange:function(v){setF(function(x){return Object.assign({},x,{peMid:v});});}, placeholder:"e.g. 45",type:"number"})),
+        e("div",null,e(Label,{text:"BULL CASE",   color:C.green}), e(Inp,{value:f.peHigh,onChange:function(v){setF(function(x){return Object.assign({},x,{peHigh:v});});},placeholder:"e.g. 55",type:"number"}))
+      ),
+      e(Btn,{onClick:calc,color:C.amber},"Calculate →")
+    ),
+    res&&e(Section,{title:"Results",accent:res.vc},
+      e("div",{style:{background:res.vc+"15",border:"1px solid "+res.vc+"44",borderRadius:"8px",padding:"16px",marginBottom:"16px",textAlign:"center"}},
+        e("div",{style:{fontSize:"11px",color:res.vc,letterSpacing:"3px",marginBottom:"6px"}},"VERDICT"),
+        e("div",{style:{fontSize:"16px",fontWeight:"700",color:res.vc}},res.vrd),
+        res.up&&e("div",{style:{fontSize:"13px",color:C.muted,marginTop:"6px"}},(res.up>0?"+":"")+res.up+"% to fair value")
+      ),
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"16px"}},
+        [["CONSERVATIVE",fmt(Math.round(res.cons)),C.red],["FAIR VALUE",fmt(Math.round(res.base)),C.amber],["BULL CASE",fmt(Math.round(res.bull)),C.green],["BUY ZONE",fmt(res.bz),C.blue]].map(function(row){
+          return e("div",{key:row[0],style:{background:C.card,border:"1px solid "+row[2]+"33",borderTop:"3px solid "+row[2],borderRadius:"8px",padding:"14px",textAlign:"center"}},
+            e("div",{style:{fontSize:"10px",color:row[2],letterSpacing:"1px",marginBottom:"6px"}},row[0]),
+            e("div",{style:{fontSize:"18px",fontWeight:"700",color:row[2]}},row[1]),
+            row[0]==="BUY ZONE"&&e("div",{style:{fontSize:"10px",color:C.muted,marginTop:"4px"}},"30% margin of safety")
+          );
+        })
+      ),
+      e(Label,{text:"BUY/SELL PLAN"}),
+      e(TA,{value:notes,onChange:setNotes,rows:2})
+    ),
+    e(Section,{title:"How to Use",accent:C.muted},
+      e("div",{style:{fontSize:"12px",color:C.muted,lineHeight:"1.9"}},
+        e("div",null,e("span",{style:{color:C.blue}},"Step 1: "),"Yahoo Finance → Analysis → EPS Estimates (next year)"),
+        e("div",null,e("span",{style:{color:C.blue}},"Step 2: "),"Macrotrends.net → search ticker → P/E ratio → note 3yr low/avg/high"),
+        e("div",null,e("span",{style:{color:C.amber}},"Rule: "),"Never buy above your base fair value without exceptional reason")
+      )
+    )
+  );
+}
+
+function WatchlistTab(props){
+  var watchlist=props.watchlist, update=props.update;
+  var formState=useState({ticker:"",fairValue:"",buyZone:"",currentPrice:"",notes:"",status:"WATCH"}), setForm=formState[1]; var form=formState[0];
+  var sc=function(s){return {BUY:C.green,WAIT:C.amber,WATCH:C.blue,AVOID:C.red}[s]||C.muted;};
+  var selStyle={background:C.surface,border:"1px solid "+C.border,padding:"8px 12px",borderRadius:"6px",fontSize:"12px",width:"100%",outline:"none"};
+
+  function addItem(){
+    if(!form.ticker) return;
+    var up=form.fairValue&&form.currentPrice?(((form.fairValue-form.currentPrice)/form.currentPrice)*100).toFixed(1):null;
+    update([Object.assign({},form,{upside:up,id:Date.now()})].concat(watchlist));
+    setForm({ticker:"",fairValue:"",buyZone:"",currentPrice:"",notes:"",status:"WATCH"});
+  }
+
+  return e("div",null,
+    e(Section,{title:"Add to Watchlist",accent:C.blue},
+      e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"10px"}},
+        e("div",null,e(Label,{text:"TICKER"}),e(Inp,{value:form.ticker,onChange:function(v){setForm(function(f){return Object.assign({},f,{ticker:v.toUpperCase()});});},placeholder:"e.g. LLY"})),
+        e("div",null,e(Label,{text:"CURRENT PRICE"}),e(Inp,{value:form.currentPrice,onChange:function(v){setForm(function(f){return Object.assign({},f,{currentPrice:parseFloat(v)||""});});},placeholder:"$",type:"number"})),
+        e("div",null,e(Label,{text:"FAIR VALUE"}),e(Inp,{value:form.fairValue,onChange:function(v){setForm(function(f){return Object.assign({},f,{fairValue:parseFloat(v)||""});});},placeholder:"$",type:"number"})),
+        e("div",null,e(Label,{text:"BUY ZONE"}),e(Inp,{value:form.buyZone,onChange:function(v){setForm(function(f){return Object.assign({},f,{buyZone:parseFloat(v)||""});});},placeholder:"$",type:"number"}))
+      ),
+      e("div",{style:{display:"grid",gridTemplateColumns:"3fr 1fr",gap:"10px",marginBottom:"12px"}},
+        e("div",null,e(Label,{text:"NOTES"}),e(Inp,{value:form.notes,onChange:function(v){setForm(function(f){return Object.assign({},f,{notes:v});});},placeholder:"Why is this interesting?"})),
+        e("div",null,e(Label,{text:"STATUS"}),e("select",{value:form.status,onChange:function(ev){setForm(function(f){return Object.assign({},f,{status:ev.target.value});});},style:Object.assign({},selStyle,{color:sc(form.status)})},["BUY","WATCH","WAIT","AVOID"].map(function(s){return e("option",{key:s,value:s},s);})))
+      ),
+      e(Btn,{onClick:addItem,color:C.blue},"Add to Watchlist →")
+    ),
+    e(Section,{title:"Watchlist ("+watchlist.length+")",accent:C.purple},
+      watchlist.length===0
+      ? e("div",{style:{textAlign:"center",padding:"40px",color:C.muted,fontSize:"12px"}},"Watchlist is empty.")
+      : watchlist.map(function(w,i){
+          var inBuy=w.currentPrice&&w.buyZone&&w.currentPrice<=w.buyZone;
+          return e("div",{key:w.id||i,style:{background:C.card,border:"1px solid "+(inBuy?C.green+"66":C.border),borderLeft:"3px solid "+sc(w.status),borderRadius:"8px",padding:"14px",marginBottom:"8px"}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+              e("div",{style:{flex:1}},
+                e("div",{style:{display:"flex",gap:"10px",alignItems:"center",marginBottom:"6px",flexWrap:"wrap"}},
+                  e("span",{style:{fontSize:"15px",fontWeight:"700",color:C.text}},w.ticker),
+                  e(Badge,{color:sc(w.status)},w.status),
+                  inBuy&&e(Badge,{color:C.green},"IN BUY ZONE"),
+                  w.upside&&e("span",{style:{fontSize:"12px",color:w.upside>0?C.green:C.red}},(w.upside>0?"+":"")+w.upside+"% upside")
+                ),
+                e("div",{style:{display:"flex",gap:"16px",marginBottom:"6px",flexWrap:"wrap"}},
+                  w.currentPrice&&e("span",{key:"cp",style:{fontSize:"11px",color:C.muted}},"Now: "+fmt(w.currentPrice)),
+                  w.fairValue   &&e("span",{key:"fv",style:{fontSize:"11px",color:C.amber}},"Fair: "+fmt(w.fairValue)),
+                  w.buyZone     &&e("span",{key:"bz",style:{fontSize:"11px",color:C.green}},"Buy zone: "+fmt(w.buyZone))
+                ),
+                w.notes&&e("div",{style:{fontSize:"11px",color:C.muted,lineHeight:"1.6"}},w.notes)
+              ),
+              e(Btn,{onClick:function(){update(watchlist.filter(function(_,idx){return idx!==i;}));},color:C.red,small:true,outline:true},"×")
+            )
+          );
+        })
+    )
+  );
+}
+
+var CHECKLISTS={
+  daily:    {label:"Daily (10 min)",   color:C.green, items:[
     {id:"d1",text:"Check The Market Ear newsletter",link:"themarketear.com",tag:"Macro"},
     {id:"d2",text:"Scan Finviz heat map for sector moves",link:"finviz.com/map",tag:"Pulse"},
     {id:"d3",text:"Google News alerts for your tickers",link:"news.google.com",tag:"News"},
-    {id:"d4",text:"Any position down 5%+? Check why before reacting",link:"",tag:"Risk"},
+    {id:"d4",text:"Any position down 5%+? Check why first",link:"",tag:"Risk"},
   ]},
-  weekly:    { label:"Weekly (30 min)",   color:T.blue, items:[
-    {id:"w1",text:"Run Finviz screener: PEG<1, down 20%+, EPS growth >15%",link:"finviz.com/screener",tag:"Screen"},
+  weekly:   {label:"Weekly (30 min)",  color:C.blue, items:[
+    {id:"w1",text:"Finviz screener: PEG<1, down 20%+, EPS growth >15%",link:"finviz.com/screener",tag:"Screen"},
     {id:"w2",text:"Read Stratechery — tech integration insights",link:"stratechery.com",tag:"Research"},
     {id:"w3",text:"Check earnings calendar for next 2 weeks",link:"earningswhispers.com",tag:"Calendar"},
     {id:"w4",text:"Is any watchlist stock at or below buy zone?",link:"",tag:"Entry"},
-    {id:"w5",text:"Read one earnings transcript from current holdings",link:"seekingalpha.com",tag:"Deep Dive"},
+    {id:"w5",text:"Read one earnings transcript from holdings",link:"seekingalpha.com",tag:"Deep Dive"},
   ]},
-  monthly:   { label:"Monthly (60 min)",  color:T.amber, items:[
+  monthly:  {label:"Monthly (60 min)", color:C.amber, items:[
     {id:"m1",text:"Re-run valuations on AMZN, INTU, TSM with latest EPS",link:"finance.yahoo.com",tag:"Valuation"},
     {id:"m2",text:"Write 1 paragraph per holding: thesis still intact?",link:"",tag:"Thesis"},
     {id:"m3",text:"Find 1-2 new stocks from screener to research",link:"finviz.com",tag:"Pipeline"},
@@ -909,119 +534,250 @@ const CL = {
     {id:"m5",text:"Read one Howard Marks memo",link:"oaktree.com/insights",tag:"Macro"},
     {id:"m6",text:"Update watchlist prices and statuses",link:"",tag:"Watchlist"},
   ]},
-  quarterly: { label:"Quarterly (4 hrs)", color:T.purple, items:[
-    {id:"q1",text:"Export brokerage statement for the quarter",link:"",tag:"Accounting"},
+  quarterly:{label:"Quarterly (4 hrs)", color:C.purple, items:[
+    {id:"q1",text:"Export brokerage statement",link:"",tag:"Accounting"},
     {id:"q2",text:"Update cost basis and shares in spreadsheet",link:"",tag:"Records"},
     {id:"q3",text:"Calculate return vs QQQ and S&P 500",link:"",tag:"Performance"},
     {id:"q4",text:"Re-evaluate thesis on every holding",link:"",tag:"Thesis"},
-    {id:"q5",text:"Rebalance any position drifted 3%+ from target",link:"",tag:"Rebalance"},
+    {id:"q5",text:"Rebalance positions drifted 3%+ from target",link:"",tag:"Rebalance"},
     {id:"q6",text:"Record realized gains/losses for tax purposes",link:"",tag:"Tax"},
     {id:"q7",text:"Update price targets with new EPS estimates",link:"",tag:"Targets"},
-    {id:"q8",text:"Write quarterly portfolio summary paragraph",link:"",tag:"Journal"},
-    {id:"q9",text:"Review trading journal — patterns?",link:"",tag:"Review"},
+    {id:"q8",text:"Write quarterly portfolio summary",link:"",tag:"Journal"},
+    {id:"q9",text:"Review trading journal — spot patterns",link:"",tag:"Review"},
   ]},
 };
-const tagC = {Macro:T.amber,Pulse:T.blue,News:T.green,Risk:T.red,Screen:T.purple,Research:T.blue,Calendar:T.amber,Entry:T.green,Valuation:T.amber,Thesis:T.purple,Pipeline:T.blue,Performance:T.green,Accounting:T.amber,Records:T.blue,Tax:T.red,Rebalance:T.green,Targets:T.amber,Journal:T.purple,Review:T.blue,Watchlist:T.cyan};
+var tagColors={Macro:C.amber,Pulse:C.blue,News:C.green,Risk:C.red,Screen:C.purple,Research:C.blue,Calendar:C.amber,Entry:C.green,Valuation:C.amber,Thesis:C.purple,Pipeline:C.blue,Performance:C.green,Accounting:C.amber,Records:C.blue,Tax:C.red,Rebalance:C.green,Targets:C.amber,Journal:C.purple,Review:C.blue,Watchlist:C.cyan,"Deep Dive":C.purple};
 
-function ResearchTab({ checks, update }) {
-  const toggle = (id) => { const k=`${id}_${today()}`; update({...checks,[k]:!checks[k]}); };
-  const ck = (id) => !!checks[`${id}_${today()}`];
+function ResearchTab(props){
+  var checks=props.checks, update=props.update;
+  function ck(id){return !!checks[id+"_"+today()];}
+  function toggle(id){var k=id+"_"+today();var nc=Object.assign({},checks);nc[k]=!nc[k];update(nc);}
 
-  return (
-    <div>
-      <div style={{ marginBottom:"16px", padding:"12px 14px", background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", fontSize:"12px", color:T.text }}>
-        📅 {today()} — Checklists reset daily
-      </div>
-      {Object.entries(CL).map(([key,list]) => {
-        const done = list.items.filter(item=>ck(item.id)).length;
-        return (
-          <Section key={key} title={`${list.label} — ${done}/${list.items.length}`} accent={list.color}>
-            <div style={{ background:T.faint, borderRadius:"4px", height:"4px", marginBottom:"14px" }}>
-              <div style={{ width:`${(done/list.items.length)*100}%`, height:"100%", background:list.color, borderRadius:"4px", transition:"width 0.3s" }} />
-            </div>
-            {list.items.map(item => {
-              const checked = ck(item.id);
-              return (
-                <div key={item.id} onClick={()=>toggle(item.id)} style={{ display:"flex", gap:"12px", alignItems:"center", padding:"10px 12px", marginBottom:"4px", background:checked?list.color+"10":T.card, border:`1px solid ${checked?list.color+"44":T.border}`, borderRadius:"6px", cursor:"pointer", transition:"all 0.15s" }}>
-                  <div style={{ width:"16px", height:"16px", minWidth:"16px", border:`2px solid ${checked?list.color:T.muted}`, borderRadius:"3px", background:checked?list.color:"transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", color:T.bg, fontWeight:"700" }}>{checked?"✓":""}</div>
-                  <div style={{ flex:1 }}>
-                    <span style={{ fontSize:"12px", color:checked?T.muted:T.text, textDecoration:checked?"line-through":"none" }}>{item.text}</span>
-                    {item.link && !checked && <span style={{ fontSize:"10px", color:list.color, marginLeft:"8px", opacity:.7 }}>→ {item.link}</span>}
-                  </div>
-                  <Badge color={tagC[item.tag]||T.muted} small>{item.tag}</Badge>
-                </div>
-              );
-            })}
-          </Section>
+  return e("div",null,
+    e("div",{style:{marginBottom:"16px",padding:"12px 14px",background:C.card,border:"1px solid "+C.border,borderRadius:"8px",fontSize:"12px",color:C.text}},"Today: "+today()+" — Checklists reset daily"),
+    Object.keys(CHECKLISTS).map(function(key){
+      var list=CHECKLISTS[key];
+      var done=list.items.filter(function(item){return ck(item.id);}).length;
+      return e(Section,{key:key,title:list.label+" — "+done+"/"+list.items.length,accent:list.color},
+        e("div",{style:{background:C.faint,borderRadius:"4px",height:"4px",marginBottom:"14px"}},
+          e("div",{style:{width:(done/list.items.length*100)+"%",height:"100%",background:list.color,borderRadius:"4px",transition:"width .3s"}})
+        ),
+        list.items.map(function(item){
+          var checked=ck(item.id);
+          return e("div",{key:item.id,onClick:function(){toggle(item.id);},style:{display:"flex",gap:"12px",alignItems:"center",padding:"10px 12px",marginBottom:"4px",background:checked?list.color+"10":C.card,border:"1px solid "+(checked?list.color+"44":C.border),borderRadius:"6px",cursor:"pointer"}},
+            e("div",{style:{width:"16px",height:"16px",minWidth:"16px",border:"2px solid "+(checked?list.color:C.muted),borderRadius:"3px",background:checked?list.color:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:C.bg,fontWeight:"700"}},checked?"✓":""),
+            e("div",{style:{flex:1}},
+              e("span",{style:{fontSize:"12px",color:checked?C.muted:C.text,textDecoration:checked?"line-through":"none"}},item.text),
+              item.link&&!checked&&e("span",{style:{fontSize:"10px",color:list.color,marginLeft:"8px",opacity:.7}},"→ "+item.link)
+            ),
+            e(Badge,{color:tagColors[item.tag]||C.muted,small:true},item.tag)
+          );
+        })
+      );
+    })
+  );
+}
+
+function ThesisTab(props){
+  var thesis=props.thesis, update=props.update;
+  var editState=useState(false), setEditing=editState[1]; var editing=editState[0];
+  var reading=[
+    {title:"Stratechery by Ben Thompson",url:"stratechery.com",why:"Best tech integration analysis on the internet."},
+    {title:"Howard Marks Memos",url:"oaktree.com/insights",why:"Best macro thinking available for free."},
+    {title:"Sequoia AI Report",url:"sequoiacap.com",why:"Best forward-looking view on where AI is heading."},
+    {title:"The Market Ear",url:"themarketear.com",why:"Daily macro summary, data-driven. 10 min read."},
+    {title:"Matt Levine — Money Stuff",url:"bloomberg.com",why:"Best financial markets commentary available."},
+  ];
+  var missing=[
+    {ticker:"GEV",why:"AI needs power. Industrials winning because of tech.",signal:"Wait for $630",color:C.amber},
+    {ticker:"JPM",why:"AI transforms finance. Moves differently from tech.",signal:"Wait for pullback below $250",color:C.blue},
+    {ticker:"LLY",why:"AI accelerates drug discovery. Healthcare doesn't correlate with tech.",signal:"Strong buy ~$1,025",color:C.green},
+  ];
+
+  return e("div",null,
+    e(Section,{title:"My Investment Thesis",accent:C.green},
+      e("div",{style:{marginBottom:"12px",padding:"10px 14px",background:C.card,borderRadius:"6px",fontSize:"11px",color:C.muted}},"When a stock drops 20%, re-read this. Either your thesis holds (buy more) or something changed (re-evaluate). This is your north star."),
+      editing
+      ? e("div",null,
+          e(TA,{value:thesis,onChange:update,rows:16}),
+          e("div",{style:{marginTop:"10px"}},e(Btn,{onClick:function(){setEditing(false);},color:C.green},"Save Thesis"))
+        )
+      : e("div",null,
+          e("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:"8px",padding:"20px",fontSize:"12px",color:C.text,lineHeight:"1.9",whiteSpace:"pre-wrap",marginBottom:"12px"}},thesis),
+          e(Btn,{onClick:function(){setEditing(true);},color:C.green,outline:true},"Edit Thesis")
+        )
+    ),
+    e(Section,{title:"Macro Reading List",accent:C.amber},
+      reading.map(function(r,i){
+        return e(Card,{key:i},
+          e("div",{style:{fontSize:"13px",fontWeight:"700",color:C.text,marginBottom:"2px"}},r.title),
+          e("div",{style:{fontSize:"11px",color:C.amber,marginBottom:"4px"}},r.url),
+          e("div",{style:{fontSize:"11px",color:C.muted}},r.why)
         );
-      })}
-    </div>
+      })
+    ),
+    e(Section,{title:"Diversification Upgrades",accent:C.red},
+      e("div",{style:{fontSize:"12px",color:C.muted,marginBottom:"14px"}},"~80% tech correlated. These reduce correlation while fitting your thesis."),
+      missing.map(function(m,i){
+        return e("div",{key:i,style:{background:C.card,border:"1px solid "+m.color+"33",borderLeft:"3px solid "+m.color,borderRadius:"8px",padding:"14px",marginBottom:"8px"}},
+          e("div",{style:{fontSize:"14px",fontWeight:"700",color:C.text,marginBottom:"4px"}},m.ticker),
+          e("div",{style:{fontSize:"12px",color:C.muted,marginBottom:"6px",lineHeight:"1.6"}},m.why),
+          e(Badge,{color:m.color,small:true},m.signal)
+        );
+      })
+    )
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// TAB 6: THESIS
-// ══════════════════════════════════════════════════════════
-function ThesisTab({ thesis, update }) {
-  const [editing, setEditing] = useState(false);
-  const reading = [
-    { title:"Stratechery by Ben Thompson", url:"stratechery.com", why:"Best tech integration analysis on the internet." },
-    { title:"Howard Marks Memos",          url:"oaktree.com/insights", why:"Best macro thinking available for free." },
-    { title:"Sequoia AI Report",           url:"sequoiacap.com", why:"Best forward-looking view on where AI is heading." },
-    { title:"The Market Ear",              url:"themarketear.com", why:"Daily macro summary, data-driven. 10 min read." },
-    { title:"Matt Levine — Money Stuff",   url:"bloomberg.com", why:"Best financial markets commentary available." },
-  ];
-  const missing = [
-    { ticker:"GEV", why:"AI needs power. Industrials winning because of tech. Zero tech correlation.", signal:"Wait for $630", color:T.amber },
-    { ticker:"JPM", why:"AI transforms finance. Moves differently from tech. Fortress balance sheet.", signal:"Wait for pullback below $250", color:T.blue },
-    { ticker:"LLY", why:"AI accelerates drug discovery. Healthcare never correlates with tech crashes.", signal:"Strong buy territory ~$1,025", color:T.green },
-  ];
+function SyncTab(props){
+  var syncCfg=props.syncCfg, syncStatus=props.syncStatus, syncMsg=props.syncMsg, onConnect=props.onConnect, onDisconnect=props.onDisconnect;
+  var stepState=useState(syncCfg?"connected":1), setStep=stepState[1]; var step=stepState[0];
+  var ctState=useState(""), setCt=ctState[1]; var ct=ctState[0];
+  var keyState=useState(genKey()), setKey=keyState[1]; var key=keyState[0];
+  var errState=useState(""), setErr=errState[1]; var err=errState[0];
+  var busyState=useState(false), setBusy=busyState[1]; var busy=busyState[0];
 
-  return (
-    <div>
-      <Section title="My Investment Thesis" accent={T.green}>
-        <div style={{ marginBottom:"12px", padding:"10px 14px", background:T.card, borderRadius:"6px", fontSize:"11px", color:T.muted }}>
-          When a stock drops 20%, re-read this. Either your thesis still holds (buy more) or something changed (re-evaluate). This is your north star.
-        </div>
-        {editing ? (
-          <div>
-            <Textarea value={thesis} onChange={update} rows={16} />
-            <div style={{ marginTop:"10px" }}><Btn onClick={()=>setEditing(false)} color={T.green}>Save Thesis</Btn></div>
-          </div>
-        ) : (
-          <div>
-            <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"20px", fontSize:"12px", color:T.text, lineHeight:"1.9", whiteSpace:"pre-wrap", marginBottom:"12px" }}>{thesis}</div>
-            <Btn onClick={()=>setEditing(true)} color={T.green} outline>Edit Thesis</Btn>
-          </div>
-        )}
-      </Section>
+  var stC={offline:C.muted,connecting:C.amber,syncing:C.amber,synced:C.green,error:C.red};
+  var sc=stC[syncStatus];
 
-      <Section title="Macro Reading List" accent={T.amber}>
-        {reading.map((r,i) => (
-          <div key={i} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
-            <div style={{ fontSize:"13px", fontWeight:"700", color:T.text, marginBottom:"2px" }}>{r.title}</div>
-            <div style={{ fontSize:"11px", color:T.amber, marginBottom:"4px" }}>{r.url}</div>
-            <div style={{ fontSize:"11px", color:T.muted }}>{r.why}</div>
-          </div>
-        ))}
-      </Section>
+  function parseConfig(){
+    try{
+      var t=ct.trim();
+      var m=t.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})/);
+      if(m) t=m[1];
+      try{var p=JSON.parse(t);if(p.apiKey&&p.projectId){setErr("");return p;}}catch(x){}
+      var obj=t.match(/\{[\s\S]*\}/);
+      if(obj){
+        var json=obj[0].replace(/\/\/.*/g,"").replace(/,(\s*[}\]])/g,"$1").replace(/([{,]\s*)(\w+)\s*:/g,'$1"$2":').replace(/:\s*'([^']*)'/g,':"$1"');
+        var p2=JSON.parse(json);
+        if(p2.apiKey&&p2.projectId){setErr("");return p2;}
+      }
+      setErr("Could not parse config. Copy just the { } object.");return null;
+    }catch(x){setErr("Invalid config format.");return null;}
+  }
 
-      <Section title="Diversification Upgrades — Missing Pieces" accent={T.red}>
-        <div style={{ fontSize:"12px", color:T.muted, marginBottom:"14px" }}>~80% tech correlated. These reduce correlation while fitting your "tech integrates into everything" thesis.</div>
-        {missing.map((m,i) => (
-          <div key={i} style={{ background:T.card, border:`1px solid ${m.color}33`, borderLeft:`3px solid ${m.color}`, borderRadius:"8px", padding:"14px", marginBottom:"8px" }}>
-            <div style={{ fontSize:"14px", fontWeight:"700", color:T.text, marginBottom:"4px" }}>{m.ticker}</div>
-            <div style={{ fontSize:"12px", color:T.muted, marginBottom:"6px", lineHeight:"1.6" }}>{m.why}</div>
-            <Badge color={m.color} small>{m.signal}</Badge>
-          </div>
-        ))}
-      </Section>
-    </div>
+  function handleConnect(){
+    var cfg=parseConfig();
+    if(!cfg) return;
+    if(!key.trim()){setErr("Please enter a sync key.");return;}
+    setBusy(true);setErr("");
+    setTimeout(function(){
+      onConnect({firebaseConfig:cfg,syncKey:key.trim().toUpperCase()});
+      setBusy(false);setStep("connected");
+    },300);
+  }
+
+  if(step==="connected"||syncCfg){
+    return e("div",null,
+      e(Section,{title:"Cloud Sync Status",accent:C.cyan},
+        e("div",{style:{background:sc+"15",border:"1px solid "+sc+"33",borderRadius:"12px",padding:"24px",marginBottom:"20px",textAlign:"center"}},
+          e("div",{style:{fontSize:"32px",color:sc,marginBottom:"8px",fontWeight:"700"}},syncStatus==="synced"?"✓":syncStatus==="error"?"✕":"◌"),
+          e("div",{style:{fontSize:"15px",color:sc,fontWeight:"700",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"2px"}},syncStatus==="synced"?"All Devices Synced":syncStatus==="error"?"Sync Error":"Connecting..."),
+          syncMsg&&e("div",{style:{fontSize:"12px",color:C.muted,marginTop:"6px"}},syncMsg)
+        ),
+        e(Card,null,
+          e(Label,{text:"YOUR SYNC KEY"}),
+          e("div",{style:{fontSize:"20px",color:C.cyan,fontWeight:"700",letterSpacing:"4px",margin:"8px 0"}},syncCfg&&syncCfg.syncKey),
+          e("div",{style:{fontSize:"11px",color:C.muted}},"Enter this key on any device to access your data.")
+        ),
+        e(Card,null,
+          e(Label,{text:"ACCESS FROM ANOTHER DEVICE"}),
+          e("div",{style:{fontSize:"12px",color:C.text,lineHeight:"1.9",marginTop:"6px"}},
+            ["1. Open your GitHub Pages URL on the other device",
+             "2. Go to the ⟳ Sync tab",
+             "3. Click 'Already have a key?'",
+             "4. Paste your Firebase config + your sync key",
+             "5. Your data loads automatically ✓"
+            ].map(function(t,i){return e("div",{key:i},t);})
+          )
+        ),
+        e(Btn,{onClick:onDisconnect,color:C.red,outline:true},"Disconnect Sync")
+      )
+    );
+  }
+
+  var steps=["Create Firebase","Copy Config","Set Sync Key"];
+
+  return e("div",null,
+    e("div",{style:{background:C.card,border:"1px solid "+C.cyan+"33",borderRadius:"8px",padding:"16px",marginBottom:"24px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      e("div",null,
+        e("div",{style:{fontSize:"12px",color:C.cyan,fontWeight:"700",marginBottom:"2px"}},"Already have a sync key?"),
+        e("div",{style:{fontSize:"11px",color:C.muted}},"Connect to existing data")
+      ),
+      e(Btn,{onClick:function(){setStep("existing");},color:C.cyan,outline:true,small:true},"Connect with key →")
+    ),
+    step==="existing"&&e(Section,{title:"Connect to Existing Data",accent:C.cyan},
+      e("div",{style:{marginBottom:"10px"}},e(Label,{text:"FIREBASE CONFIG"}),e(TA,{value:ct,onChange:setCt,placeholder:"Paste your Firebase config { } here",rows:8})),
+      e("div",{style:{marginBottom:"12px"}},e(Label,{text:"YOUR SYNC KEY"}),e(Inp,{value:key,onChange:function(v){setKey(v.toUpperCase());},placeholder:"e.g. ABCD12-EF3456"})),
+      err&&e("div",{style:{fontSize:"11px",color:C.red,marginBottom:"12px"}},err),
+      e("div",{style:{display:"flex",gap:"8px"}},
+        e(Btn,{onClick:handleConnect,color:C.cyan,disabled:busy},busy?"Connecting...":"Connect →"),
+        e(Btn,{onClick:function(){setStep(1);},color:C.muted,outline:true,small:true},"Back")
+      )
+    ),
+    step!=="existing"&&e("div",null,
+      e("div",{style:{display:"flex",gap:"8px",marginBottom:"28px"}},
+        steps.map(function(s,i){
+          return e("div",{key:i,style:{flex:1,textAlign:"center"}},
+            e("div",{style:{height:"3px",background:step>i+1?C.green:step===i+1?C.cyan:C.faint,borderRadius:"2px",marginBottom:"6px"}}),
+            e("div",{style:{fontSize:"9px",color:step===i+1?C.cyan:step>i+1?C.green:C.muted,letterSpacing:"1px"}},(step>i+1?"✓ ":"")+s.toUpperCase())
+          );
+        })
+      ),
+      step===1&&e(Section,{title:"Step 1 — Create a Free Firebase Project",accent:C.cyan},
+        e("div",{style:{fontSize:"12px",color:C.muted,marginBottom:"20px",lineHeight:"1.8"}},"Firebase is Google's free cloud database. Setup takes about 3 minutes."),
+        [
+          ["1","Go to console.firebase.google.com and sign in with Google"],
+          ["2","Click Add project → name it anything → Continue"],
+          ["3","Click Create project"],
+          ["4","Click the </> Web icon → give it a nickname → Register app"],
+          ["5","You'll see a firebaseConfig object — leave this page open for Step 2"],
+          ["6","Left sidebar: Build → Firestore Database → Create database → Start in test mode → Enable"],
+        ].map(function(row){
+          return e("div",{key:row[0],style:{display:"flex",gap:"14px",padding:"12px 0",borderBottom:"1px solid "+C.border}},
+            e("div",{style:{width:"22px",height:"22px",minWidth:"22px",background:C.cyan+"22",border:"1px solid "+C.cyan+"44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:C.cyan,fontWeight:"700"}},row[0]),
+            e("div",{style:{fontSize:"12px",color:C.text,lineHeight:"1.7"}},row[1])
+          );
+        }),
+        e("div",{style:{marginTop:"20px"}},e(Btn,{onClick:function(){setStep(2);},color:C.cyan},"I created the project →"))
+      ),
+      step===2&&e(Section,{title:"Step 2 — Paste Your Firebase Config",accent:C.cyan},
+        e("div",{style:{fontSize:"12px",color:C.muted,marginBottom:"16px",lineHeight:"1.8"}},"On the Firebase page, find the firebaseConfig object. Copy the entire { } block."),
+        e(Label,{text:"PASTE YOUR CONFIG BELOW"}),
+        e(TA,{value:ct,onChange:setCt,placeholder:"{ apiKey: '...', projectId: '...', ... }",rows:9}),
+        err&&e("div",{style:{fontSize:"11px",color:C.red,margin:"8px 0"}},err),
+        e("div",{style:{display:"flex",gap:"8px",marginTop:"16px"}},
+          e(Btn,{onClick:function(){var c=parseConfig();if(c) setStep(3);},color:C.cyan},"Verify & Continue →"),
+          e(Btn,{onClick:function(){setStep(1);},color:C.muted,outline:true,small:true},"← Back")
+        )
+      ),
+      step===3&&e(Section,{title:"Step 3 — Set Your Sync Key",accent:C.cyan},
+        e("div",{style:{fontSize:"12px",color:C.muted,marginBottom:"16px",lineHeight:"1.8"}},"Your sync key links all your devices. Keep it private."),
+        e("div",{style:{background:C.card,border:"1px solid "+C.cyan+"33",borderRadius:"8px",padding:"20px",marginBottom:"16px",textAlign:"center"}},
+          e(Label,{text:"YOUR SYNC KEY"}),
+          e("div",{style:{fontSize:"24px",color:C.cyan,fontWeight:"700",letterSpacing:"6px",margin:"10px 0 14px"}},key),
+          e(Inp,{value:key,onChange:function(v){setKey(v.toUpperCase().replace(/[^A-Z0-9-]/g,""));},placeholder:"Or type your own key"}),
+          e("div",{style:{marginTop:"10px"}},e(Btn,{onClick:function(){setKey(genKey());},color:C.muted,small:true,outline:true},"↻ Generate new key"))
+        ),
+        e("div",{style:{background:"#ffb34720",border:"1px solid "+C.amber+"44",borderRadius:"8px",padding:"12px",marginBottom:"16px",fontSize:"11px",color:C.amber,lineHeight:"1.7"}},"⚠ Write this key down somewhere safe. If you lose it, you won't be able to reconnect."),
+        err&&e("div",{style:{fontSize:"11px",color:C.red,marginBottom:"12px"}},err),
+        e("div",{style:{display:"flex",gap:"8px"}},
+          e(Btn,{onClick:handleConnect,color:C.cyan,disabled:busy},busy?"Connecting...":"Connect & Sync →"),
+          e(Btn,{onClick:function(){setStep(2);},color:C.muted,outline:true,small:true},"← Back")
+        )
+      ),
+      e(Section,{title:"Important: Update Firestore Rules",accent:C.amber},
+        e("div",{style:{fontSize:"12px",color:C.muted,lineHeight:"1.8",marginBottom:"14px"}},"Firebase test mode expires in 30 days. To keep sync working permanently:"),
+        e("div",{style:{background:"#0a0f0a",border:"1px solid "+C.green+"33",borderRadius:"8px",padding:"16px",marginBottom:"14px"}},
+          e("div",{style:{fontSize:"11px",color:C.muted,marginBottom:"8px"}},"Firebase Console → Firestore → Rules → paste this → Publish:"),
+          e("pre",{style:{fontSize:"11px",color:C.green,lineHeight:"1.7",whiteSpace:"pre-wrap"}},"rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /investmentOS/{syncKey} {\n      allow read, write: if true;\n    }\n  }\n}")
+        )
+      )
+    )
   );
 }
 
-// ── RENDER ─────────────────────────────────────────────────
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
